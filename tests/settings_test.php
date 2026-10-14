@@ -1,5 +1,5 @@
 <?php
-// Unit tests for docker/sis-settings-lib.php. Run: php tests/settings_lib_test.php
+// Tests for the settings renderer (docker/sis-settings*.php). Run: php tests/settings_test.php
 declare(strict_types=1);
 
 require __DIR__ . '/../docker/sis-settings-lib.php';
@@ -77,5 +77,21 @@ check('render: plugin key forced', $CFG->forced_plugin_settings['local_sisexampl
 foreach (['wwwroot', 'dataroot', 'prefix', 'admin', 'dbpass', 'dbhost'] as $k) {
     check("render refuses connection keys: $k", throws(fn() => sis_settings_render_locked(['core' => [$k => 'x'], 'plugins' => []]), $k));
 }
+
+// CLI: exit codes the entrypoint relies on
+function cli(array $args, array $env = []): int {
+    $cmd = 'php ' . escapeshellarg(__DIR__ . '/../docker/sis-settings.php');
+    foreach ($args as $arg) {
+        $cmd .= ' ' . escapeshellarg($arg);
+    }
+    $p = proc_open($cmd, [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, $env + getenv());
+    return proc_close($p);
+}
+check('cli: unknown command exits 64', cli(['nonsense']) === 64);
+$out = sys_get_temp_dir() . '/sis-locked-' . getmypid() . '.php';
+check('cli: invalid override exits 1', cli(['render', $out], ['SIS_OVERRIDE_SETTINGS' => tmpjson('{bad')]) === 1);
+check('cli: no output written on error', !file_exists($out));
+check('cli: valid render exits 0', cli(['render', $out], ['SIS_INSTITUTION_SETTINGS' => tmpjson('{"locked":{"core":{"x":"1"}}}')]) === 0 && is_file($out));
+@unlink($out);
 
 exit($failures ? 1 : 0);
