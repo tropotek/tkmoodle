@@ -14,7 +14,7 @@ if [[ "${1:-up}" == up ]]; then
   APP_IMAGE=moodle:dev
   if [[ -n "${INSTITUTION:-}" ]]; then
     [[ -d "institutions/$INSTITUTION" ]] || { echo "dev: no institutions/$INSTITUTION" >&2; exit 64; }
-    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:dev -t "moodle-$INSTITUTION:dev" "institutions/$INSTITUTION"
+    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:dev --build-arg SIS_INSTITUTION="$INSTITUTION" -t "moodle-$INSTITUTION:dev" "institutions/$INSTITUTION"
     APP_IMAGE="moodle-$INSTITUTION:dev"
   fi
   export APP_IMAGE

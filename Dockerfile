@@ -38,6 +38,11 @@ COPY --chown=moodle:www-data docker/sis-settings-lib.php /sis/bin/
 COPY --chown=moodle:www-data docker/up.php /sis/www/up.php
 COPY --chown=moodle:www-data docker/config.php /app/moodle/config.php
 COPY --chown=moodle:www-data plugins/local/ /app/moodle/public/local/
+# Which release this image is; the entrypoint records it in the database. Last in the
+# stage so a new release number invalidates no cached layer. Institution images add
+# SIS_INSTITUTION; without one the site records "base".
+ARG SIS_RELEASE=dev
+ENV SIS_RELEASE=${SIS_RELEASE}
 EXPOSE 80 443
 ENTRYPOINT ["sis-entrypoint"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

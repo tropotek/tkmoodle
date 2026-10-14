@@ -29,9 +29,30 @@ These have working defaults and are left out of `.env.example`:
 | `SERVER_NAME` | from `WWWROOT` | the web server's site address, when it must differ |
 | `CADDY_GLOBAL_OPTIONS` | empty | extra web server options |
 | `APP_IMAGE` | from `INSTITUTION` and `TAG` | run any image instead, e.g. a local build |
+| `BACKUP_DIR` | `./backups` | where `sis-backup` writes and `sis-restore` reads. The folder must exist; see [Backups](#backups) |
+| `DBTOOLS_IMAGE` | `ghcr.io/tropotek/moodle-dbtools:<TAG>` | run any backup tools image instead, e.g. a local build |
 
 Fixed in the image: MySQL through `mysqli`, table prefix `mdl_`, data in `/moodledata`. Installing
 and updating plugins from Moodle's admin pages is turned off: plugins come only with an image.
+
+## Backups
+
+`sis-backup` and `sis-restore` ([Upgrading](upgrading.md#back-up)) use the folder in
+`BACKUP_DIR`, `backups/` next to `compose.yml` by default. It must already exist: Docker would
+otherwise create it owned by root, so compose stops with `bind source path does not exist`
+instead. Each backup gets the same owner as the folder.
+
+To keep backups elsewhere, say on a separate disk:
+
+```bash
+mkdir -p /srv/moodle-backups
+echo BACKUP_DIR=/srv/moodle-backups >> .env
+```
+
+- **Docker Desktop** (macOS, Windows) only mounts folders it shares. Add the folder under
+  Settings → Resources → File sharing.
+- **SELinux** (Fedora, RHEL) blocks containers from a folder without the container label:
+  `sudo chcon -Rt container_file_t /srv/moodle-backups`.
 
 ## Site settings
 

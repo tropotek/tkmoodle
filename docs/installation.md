@@ -17,7 +17,7 @@ any code.
     mkdir moodle && cd moodle
     curl -fsSLO https://raw.githubusercontent.com/tropotek/tkmoodle/main/host/compose.yml
     curl -fsSL https://raw.githubusercontent.com/tropotek/tkmoodle/main/host/.env.example -o .env
-    mkdir config
+    mkdir config backups
     ```
 
 2. Edit `.env`. At least set:
@@ -60,6 +60,7 @@ local testing.
 | `app` | installs or upgrades Moodle on start, then serves it. It reports healthy once booted |
 | `cron` | runs Moodle's cron every minute, from the same image |
 | `db` | MySQL 8.4. Optional; see below |
+| `dbtools` | backup and restore, run by hand ([Upgrading](upgrading.md#back-up)). `up` and `pull` skip it |
 
 The site's data lives in Docker volumes named after the folder's project: `moodle_moodledata`
 (uploaded files) and `moodle_db` (the database). `moodle_caddy_data` holds the certificates.

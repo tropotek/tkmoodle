@@ -5,16 +5,30 @@ cannot move a database back to an older version.
 
 ## Back up
 
-Stop the site so nothing changes mid-backup, then copy the database and the uploaded files:
-
 ```bash
-docker compose stop app cron
-docker compose exec -T db sh -c 'mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction --no-tablespaces "$MYSQL_DATABASE"' > moodle-db.sql
-docker run --rm -v moodle_moodledata:/data -v "$PWD":/backup alpine tar czf /backup/moodledata.tgz -C /data .
-docker compose start app cron
+docker compose run --rm dbtools sis-backup
 ```
 
-With an external database, take the dump on that server instead.
+The site stays up while it runs. The backup lands in `backups/<date-time>/`, or give it a name:
+`sis-backup before-5.3.0-4`. Add `--maintenance` to show Moodle's maintenance page while it runs,
+for a backup nobody can change halfway. The first run downloads the `dbtools` image, which shares
+its layers with the bundled database's.
+
+| File | Holds |
+|---|---|
+| `manifest.env` | the release and institution the site was running, and its Moodle version |
+| `db.sql.zst` | the database. Sessions, cache flags and the settings log are kept empty |
+| `moodledata.tar.zst` | uploaded files, without the caches Moodle rebuilds |
+
+Moodle's code isn't in the backup: it's in the image, and the manifest names the release that
+carries it. A backup never overwrites another, and a failed one leaves nothing behind. One
+killed outright (a reboot, `docker kill`) leaves a `.<name>.partial` folder that blocks the name
+until you delete it, and with `--maintenance` also leaves `climaintenance.html` in moodledata,
+which keeps the site in maintenance: `docker compose exec app rm /moodledata/climaintenance.html`. Old
+backups are yours to prune or copy elsewhere. [Configuration](configuration.md#backups) covers
+keeping them outside the site's folder.
+
+It works the same with an external database.
 
 ## Upgrade
 
@@ -23,6 +37,10 @@ sed -i 's/^TAG=.*/TAG=5.3.0-3/' .env
 docker compose pull && docker compose up -d
 docker compose logs -f app
 ```
+
+`pull` skips `dbtools`, which is tagged with the same `TAG`. A pinned `TAG` changes its image too.
+With `TAG=latest`, also run `docker compose pull dbtools`, or it stays on the release you first
+backed up with.
 
 On start the app container:
 
@@ -63,18 +81,29 @@ docker compose up -d
 
 ## Restore and roll back
 
-Restoring replaces the database and the files with the backup, then runs the release that made it:
+Restoring replaces the database and the uploaded files with a backup:
 
 ```bash
-docker compose down
-docker volume rm moodle_db moodle_moodledata
-sed -i 's/^TAG=.*/TAG=5.3.0-2/' .env   # the release the backup was taken on
-docker compose up -d --wait db
-docker compose exec -T db sh -c 'mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < moodle-db.sql
-docker compose up --no-start
-docker run --rm -v moodle_moodledata:/data -v "$PWD":/backup alpine tar xzf /backup/moodledata.tgz -C /data
+docker compose stop app cron
+docker compose run --rm dbtools sis-restore <name>
 docker compose up -d
 ```
+
+`sis-restore` checks everything before it changes anything, and refuses:
+
+| Refusal | Means |
+|---|---|
+| `still running: app cron` / `other connection(s)` | the site is still up; stop it as above |
+| `newer than …; set TAG=…` | the backup is from a newer release than this host runs. Set that `TAG` in `.env`, `docker compose pull`, and run it again |
+| `from institution …` | the backup is from a different institution's site. Restoring it would drop the data of every plugin this image lacks |
+| `damaged` / `incomplete` | the backup files are cut short or missing |
+
+A backup from the same or an older release restores, and the next start upgrades it. To roll
+back a failed upgrade, set the `TAG` the backup names (`grep sis_release backups/<name>/manifest.env`),
+`docker compose pull`, then restore as above.
+
+If a restore stops partway, the site is incomplete until a restore finishes; running the same
+`sis-restore` again is safe.
 
 Going back to an older `TAG` without restoring does not work: Moodle refuses with `Cannot
 downgrade`, and the site stays in maintenance.

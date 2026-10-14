@@ -18,7 +18,7 @@ if [[ -z "$image" ]]; then
   image=moodle:smoke
   if [[ -n "$inst" ]]; then
     [[ -d "institutions/$inst" ]] || { echo "smoke: no institutions/$inst" >&2; exit 64; }
-    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smoke -t "moodle-$inst:smoke" "institutions/$inst"
+    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smoke --build-arg SIS_INSTITUTION="$inst" -t "moodle-$inst:smoke" "institutions/$inst"
     image="moodle-$inst:smoke"
   fi
 fi
@@ -68,10 +68,28 @@ sleep 15
 [[ "$(dc logs cron)" == *"sis-cron: running"* ]] || fail "cron did not start"
 echo "smoke: cron running"
 
+mysql_smoke() { dc exec -T db mysql -umoodle -psmoke -N moodle -e "$1" 2>/dev/null; }
+
+want_inst="${inst:-base}"
+release=$(mysql_smoke "select value from mdl_config where name='sis_release'")
+institution=$(mysql_smoke "select value from mdl_config where name='sis_institution'")
+if [[ -n "${SMOKE_IMAGE:-}" ]]; then
+  [[ -n "$release" && -n "$institution" ]] || fail "identity not recorded: release='$release' institution='$institution'"
+else
+  [[ "$release" == dev ]] || fail "sis_release is '$release', expected dev"
+  [[ "$institution" == "$want_inst" ]] || fail "sis_institution is '$institution', expected $want_inst"
+fi
+echo "smoke: identity $institution $release"
+
+for role in app cron; do
+  held=$(mysql_smoke "select IS_USED_LOCK(LEFT(CONCAT('sis:', DATABASE(), ':$role'), 64)) is not null")
+  [[ "$held" == 1 ]] || fail "$role does not hold its running lock"
+done
+echo "smoke: app and cron hold their locks"
+
 if [[ -n "$inst" ]]; then
   for component in $(jq -r '.locked.plugins // {} | keys[]' "institutions/$inst/settings.json"); do
-    n=$(dc exec -T db mysql -umoodle -psmoke -N moodle \
-      -e "select count(*) from mdl_config_plugins where plugin='$component' and name='version'" 2>/dev/null)
+    n=$(mysql_smoke "select count(*) from mdl_config_plugins where plugin='$component' and name='version'")
     [[ "$n" -ge 1 ]] || fail "$component is not installed"
     echo "smoke: $component installed"
   done

@@ -23,7 +23,11 @@ The release workflow then:
 
 1. builds the base image and pushes `ghcr.io/tropotek/moodle:5.3.0-4`;
 2. builds each institution on that exact base and pushes `ghcr.io/tropotek/moodle-<name>:5.3.0-4`
-   and `:latest`.
+   and `:latest`;
+3. builds the backup tools and pushes `ghcr.io/tropotek/moodle-dbtools:5.3.0-4` and `:latest`.
+
+Every image records its release, and institution images their name. A site stores both in its
+database on each start, and backups carry them.
 
 A failed build publishes nothing for that institution, and servers keep running what they have.
 Fix it and tag the next number. Servers move to the release by changing `TAG`

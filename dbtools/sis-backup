@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Back up the site while it runs: a consistent database dump, then moodledata, then a
+# manifest naming the release and institution, into /backups/<name>/.
+# Usage: sis-backup [--maintenance] [<name>]   (name defaults to the UTC time)
+#   --maintenance  show Moodle's maintenance page for the duration of the backup
+set -euo pipefail
+# shellcheck source=dbtools/sis-dbtools-lib.sh
+. "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
+# The dump holds password hashes and secrets: keep each backup private to its owner.
+umask 077
+
+usage() { echo "usage: sis-backup [--maintenance] [<name>]"; }
+maintenance=0 name=""
+while (($#)); do
+  case "$1" in
+    --maintenance) maintenance=1 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage >&2; exit 64 ;;
+    *) [[ -z "$name" ]] || { usage >&2; exit 64; }; name=$1 ;;
+  esac
+  shift
+done
+name=${name:-$(date -u +%Y%m%d-%H%M%S)}
+sis_check_name "$name"
+
+final=/backups/$name
+partial=/backups/.$name.partial
+[[ ! -e "$final" ]] || die "backup $name already exists; choose another name"
+[[ ! -e "$partial" ]] || die "BACKUP_DIR/.$name.partial is left from an interrupted backup; remove it, or choose another name"
+
+sis_db_init
+[[ -n "$(sis_sql -e "SHOW TABLES LIKE 'mdl\\_config'")" ]] || die "no Moodle site in database $DB_NAME"
+release=$(sis_config sis_release)
+[[ -n "$release" ]] || die "this site has no recorded release; start the site once on this release, then back up"
+institution=$(sis_config sis_institution)
+moodle_version=$(sis_config version)
+moodle_release=$(sis_config release)
+
+if ! mkdir "$partial" 2>/dev/null; then
+  die "cannot write to BACKUP_DIR; on Docker Desktop share the folder, on SELinux label it (see the configuration docs)"
+fi
+# Owned like the folder from the start, so a backup killed outright leaves a folder its
+# owner can remove.
+owner=$(stat -c %u:%g /backups)
+chown "$owner" "$partial"
+
+complete=0 flag=""
+cleanup() {
+  [[ -z "$flag" ]] || rm -f "$flag"
+  ((complete)) || rm -rf "$partial"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if ((maintenance)) && [[ ! -e /moodledata/climaintenance.html ]]; then
+  flag=/moodledata/climaintenance.html
+  echo '<h1>Back soon</h1><p>A backup is running.</p>' > "$flag"
+  log "maintenance on for the backup"
+fi
+
+log "dumping database $DB_NAME"
+sis_dump | zstd -q -T0 -o "$partial/db.sql.zst"
+log "archiving moodledata"
+sis_tar_moodledata | zstd -q -T0 -o "$partial/moodledata.tar.zst"
+
+{
+  echo "name=$name"
+  echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "sis_release=$release"
+  echo "sis_institution=$institution"
+  echo "moodle_version=$moodle_version"
+  echo "moodle_release=$moodle_release"
+  echo "dbtools_release=$SIS_RELEASE"
+} > "$partial/manifest.env"
+
+chown -R "$owner" "$partial"
+mv "$partial" "$final"
+complete=1
+
+log "backup $name done ($(du -sh "$final" | cut -f1)): $institution $release"
+log "restore it with:"
+echo "  docker compose stop app cron"
+echo "  docker compose run --rm dbtools sis-restore $name"
+echo "  docker compose up -d"
