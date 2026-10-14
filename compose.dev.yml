@@ -31,6 +31,9 @@ services:
   cron:
     image: ${APP_IMAGE:-moodle:dev}
     command: ["sis-cron"]
+    # The base image's healthcheck polls Caddy, which only the app container runs.
+    healthcheck:
+      disable: true
     environment: *env
     volumes: *mounts
     depends_on:

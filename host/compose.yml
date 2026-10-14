@@ -33,6 +33,9 @@ services:
   cron:
     <<: *app
     command: ["sis-cron"]
+    # The base image's healthcheck polls Caddy, which only the app container runs.
+    healthcheck:
+      disable: true
     volumes:
       - moodledata:/moodledata
       - ./config:/sis/config:ro
