@@ -3,8 +3,10 @@
 // Database probe for the entrypoint, over mysqli from env, so the image needs no
 // database client.
 //   sis-db.php wait <seconds>  exit 0 once a login succeeds; 1 on timeout
-//   sis-db.php installed       exit 0 if Moodle's config table exists, 1 if not,
-//                             2 if the database cannot be queried
+//   sis-db.php installed       exit 0 if Moodle is installed, 1 if the database is empty,
+//                             3 if an install started but never finished (Moodle sets
+//                             rolesactive as its last install step), 2 if the database
+//                             cannot be queried
 declare(strict_types=1);
 
 mysqli_report(MYSQLI_REPORT_OFF);
@@ -52,7 +54,15 @@ if ($cmd === 'installed') {
         fwrite(STDERR, "sis-db: {$db->error}\n");
         exit(2);
     }
-    exit($result->num_rows > 0 ? 0 : 1);
+    if ($result->num_rows === 0) {
+        exit(1);
+    }
+    $result = $db->query("SELECT 1 FROM mdl_config WHERE name = 'rolesactive'");
+    if ($result === false) {
+        fwrite(STDERR, "sis-db: {$db->error}\n");
+        exit(2);
+    }
+    exit($result->num_rows > 0 ? 0 : 3);
 }
 
 fwrite(STDERR, "usage: sis-db.php wait <seconds> | installed\n");

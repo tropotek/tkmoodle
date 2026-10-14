@@ -2,7 +2,8 @@
 <?php
 // Applies settings.json to the site.
 //   sis-settings.php render [<out>]  write the "locked" settings as PHP for config.php
-//   sis-settings.php defaults        set_config every "defaults" value (first install only)
+//   sis-settings.php defaults        set_config every "defaults" value, once per site: it
+//                                    records sis_defaults_applied and does nothing after that
 // The institution file is merged with the optional host override; the override wins.
 declare(strict_types=1);
 
@@ -31,6 +32,10 @@ try {
     if ($siscmd === 'defaults') {
         define('CLI_SCRIPT', true);
         require getenv('SIS_MOODLE_CONFIG') ?: '/app/moodle/config.php';
+        if (get_config('core', 'sis_defaults_applied')) {
+            echo "sis-settings: defaults already applied\n";
+            exit(0);
+        }
         $sisdefaults = sis_settings_resolve($sisdata, 'defaults', $sisgetenv);
         foreach ($sisdefaults['core'] as $siskey => $sisvalue) {
             set_config($siskey, $sisvalue);
@@ -42,6 +47,7 @@ try {
                 $siscount++;
             }
         }
+        set_config('sis_defaults_applied', time());
         printf("sis-settings: applied %d core and %d plugin defaults\n", count($sisdefaults['core']), $siscount);
         exit(0);
     }

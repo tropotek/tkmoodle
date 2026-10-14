@@ -44,6 +44,7 @@ case "$state" in
             log "UPGRADE FAILED: site left in maintenance; fix the image or restore the database, then recreate the container"
             exec "$@"
         fi
+        sis-settings.php defaults
         ;;
     1)
         : "${ADMIN_PASS:?ADMIN_PASS is required for the first install}"
@@ -55,6 +56,11 @@ case "$state" in
             --adminpass="$ADMIN_PASS" \
             --adminemail="${ADMIN_EMAIL:-admin@example.com}"
         sis-settings.php defaults
+        ;;
+    3)
+        log "INCOMPLETE INSTALL: the database has Moodle tables but the first install never finished"
+        log "empty the database (or restore a backup) and start the container again"
+        exit 1
         ;;
     *)
         log "cannot read the database state; refusing to install or upgrade"
