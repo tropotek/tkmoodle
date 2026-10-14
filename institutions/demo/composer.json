@@ -11,7 +11,7 @@
         "mediamaisteri/moodle-tiny_fontsize": "2025062900",
         "moodle-an-hochschulen/moodle-theme_boost_union": "2026042018",
         "moodle/composer-installer": "^1.2",
-        "moodle/moodle": "5.3.1",
+        "moodle/moodle": "5.2.4",
         "moodleou/moodle-report_customsql": "2026021600",
         "moodleou/moodle-report_editdates": "2025072300",
         "ndunand/moodle-tool_mergeusers": "2026081302",
