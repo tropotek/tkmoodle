@@ -182,6 +182,80 @@ refused "start the site once" tools sis-backup norelease
 sql "INSERT INTO mdl_config (name, value) VALUES ('sis_release', '$rel')"
 pass "a site with no recorded release is refused"
 
-# RESTORE CHECKS (Task 4)
+# ---- restore refusals; each must leave the site as it is -------------------------
+moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+require_once($CFG->dirroot . '/user/lib.php');
+user_create_user((object)[
+    'username' => 'smoke_after', 'password' => 'Smoke-Pass-1!', 'auth' => 'manual',
+    'firstname' => 'Smoke', 'lastname' => 'After', 'email' => 'after@example.com',
+    'confirmed' => 1, 'mnethostid' => $CFG->mnet_localhost_id,
+]);
+PHP
+tools touch /moodledata/smoke-marker
+unchanged() {
+  [[ "$(sql "SELECT COUNT(*) FROM mdl_user WHERE username = 'smoke_after'")" == 1 ]] || fail "$1: the database changed"
+  tools test -f /moodledata/smoke-marker || fail "$1: moodledata changed"
+}
+
+refused "stop the site first" tools sis-restore first
+unchanged "restore while running"
+dc stop app
+refused "cron" tools sis-restore first
+unchanged "restore while cron runs"
+dc stop cron
+pass "restore refused while app or cron runs"
+
+copy_with() {  # copy_with <new name> <key> <value>
+  cp -a "$b" "$work/backups/$1"
+  sed -i "s/^$2=.*/$2=$3/" "$work/backups/$1/manifest.env"
+}
+copy_with elsewhere sis_institution elsewhere
+refused "elsewhere" tools sis-restore elsewhere
+unchanged "another institution"
+pass "another institution's backup refused"
+
+copy_with newer sis_release 0.0.0-2
+refused "TAG=0.0.0-2" tools sis-restore newer
+unchanged "newer release"
+pass "a newer release's backup refused, naming the TAG"
+
+cp -a "$b" "$work/backups/damaged"
+truncate -s 1000 "$work/backups/damaged/moodledata.tar.zst"
+refused "damaged" tools sis-restore damaged
+unchanged "damaged archive"
+refused "no backup" tools sis-restore missing
+refused "BACKUP_DIR" tools sis-restore ../first
+pass "damaged, missing and path-like backups refused"
+
+# ---- wipe and restore ---------------------------------------------------------------
+dc down -v
+start_db_only() { if [[ -z "$ext" ]]; then dc up -d --wait db; fi; }
+start_db_only
+tools sis-restore first
+dc up -d app
+wait_up
+dc up -d cron
+
+moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+$fail = function (string $msg) { fwrite(STDERR, "$msg\n"); exit(1); };
+$user = $DB->get_record('user', ['username' => 'smoke_before']) ?: $fail('smoke_before missing');
+$DB->record_exists('course', ['shortname' => 'SMOKE101']) || $fail('SMOKE101 missing');
+$ctx = context_user::instance($user->id);
+$fs = get_file_storage();
+$file = $fs->get_file($ctx->id, 'user', 'private', 0, '/', 'smoke.txt');
+($file && $file->get_content() === 'smoke-file-content') || $fail('smoke.txt missing or wrong');
+$DB->record_exists('user', ['username' => 'smoke_after']) && $fail('smoke_after survived the restore');
+$fs->create_file_from_string(['contextid' => $ctx->id, 'component' => 'user', 'filearea' => 'private',
+    'itemid' => 0, 'filepath' => '/', 'filename' => 'after-restore.txt'], 'written after restore');
+echo "restored site checks out\n";
+PHP
+tools test ! -e /moodledata/smoke-marker || fail "moodledata not replaced"
+pass "restored: same user, course and file; later changes gone; moodledata writable"
 
 echo "smoke-backup: PASS"

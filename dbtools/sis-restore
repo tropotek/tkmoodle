@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Replace the site's database and moodledata with a backup from /backups/<name>/.
+# Refuses, changing nothing, while the site runs, or when the backup is from a newer
+# release or another institution. Usage: sis-restore <name>
+set -euo pipefail
+# shellcheck source=dbtools/sis-dbtools-lib.sh
+. "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
+
+[[ $# -eq 1 && "$1" != -* ]] || { echo "usage: sis-restore <name>" >&2; exit 64; }
+name=$1
+sis_check_name "$name"
+dir=/backups/$name
+[[ -d "$dir" ]] || die "no backup $name in BACKUP_DIR; have: $(find /backups -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f ')"
+for f in manifest.env db.sql.zst moodledata.tar.zst; do
+  [[ -f "$dir/$f" ]] || die "backup $name is incomplete: no $f"
+done
+
+log "checking backup $name"
+zstd -tq "$dir/db.sql.zst" "$dir/moodledata.tar.zst" || die "backup $name is damaged: an archive fails its checksum"
+
+b_release=$(sis_manifest_get "$dir/manifest.env" sis_release)
+b_institution=$(sis_manifest_get "$dir/manifest.env" sis_institution)
+[[ -n "$b_release" && -n "$b_institution" ]] || die "backup $name has no release or institution in manifest.env"
+target_institution=${SIS_TARGET_INSTITUTION:-demo}
+[[ "$b_institution" == "$target_institution" ]] \
+  || die "backup $name is from institution $b_institution, but this host runs $target_institution (INSTITUTION in .env)"
+sis_release_allowed "$b_release" "$SIS_RELEASE" || case $? in
+  1) die "backup $name is from release $b_release, newer than $SIS_RELEASE; set TAG=$b_release in .env, then run: docker compose run --rm dbtools sis-restore $name" ;;
+  *) die "backup $name is from a dev build, which can't be restored onto release $SIS_RELEASE" ;;
+esac
+
+sis_db_init
+running=$(sis_sql -e "SELECT CONCAT_WS(' ', IF(IS_USED_LOCK($(sis_lock app)) IS NULL, NULL, 'app'), IF(IS_USED_LOCK($(sis_lock cron)) IS NULL, NULL, 'cron'))")
+[[ -z "$running" ]] || die "still running: $running; stop the site first: docker compose stop app cron"
+others=$(sis_sql -e "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB = DATABASE() AND ID <> CONNECTION_ID()")
+[[ "$others" == 0 ]] || die "$others other connection(s) to database $DB_NAME; stop the site first: docker compose stop app cron"
+
+complete=0
+on_exit() {
+  ((complete)) || echo "sis: restore did not finish; the site is incomplete. Running sis-restore $name again is safe." >&2
+}
+trap on_exit EXIT
+
+log "emptying database $DB_NAME"
+tables=$(sis_sql -e "SELECT IF(table_type = 'VIEW', 'VIEW', 'TABLE'), table_name FROM information_schema.tables WHERE table_schema = DATABASE()")
+{
+  echo 'SET FOREIGN_KEY_CHECKS = 0;'
+  while IFS=$'\t' read -r kind t; do
+    if [[ -n "$t" ]]; then printf "DROP %s IF EXISTS \`%s\`;\n" "$kind" "$t"; fi
+  done <<<"$tables"
+} | sis_sql
+log "loading database"
+zstd -dcq "$dir/db.sql.zst" | sis_sql --max-allowed-packet=256M
+log "restoring moodledata"
+find /moodledata -mindepth 1 -delete
+zstd -dcq "$dir/moodledata.tar.zst" | tar -C /moodledata --numeric-owner --same-owner -xpf -
+complete=1
+
+log "restored $name: $b_institution $b_release"
+log "start the site: docker compose up -d"
