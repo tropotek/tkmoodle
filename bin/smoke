@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Local smoke test: build the base (and optionally one institution on it), run it
+# with host/compose.yml and a throwaway database, check it serves, then tear down.
+# Usage: bin/smoke [<institution>]
+#   SMOKE_PORT=8399  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
+#   SMOKE_ENV='KEY=value'  extra .env lines
+#   SMOKE_IMAGE=<image>    use this app image instead of building
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+inst="${1:-}"
+port="${SMOKE_PORT:-8399}"
+timeout="${SMOKE_TIMEOUT:-600}"
+image="${SMOKE_IMAGE:-}"
+
+if [[ -z "$image" ]]; then
+  docker build -t moodle:smoke .
+  image=moodle:smoke
+  if [[ -n "$inst" ]]; then
+    [[ -d "institutions/$inst" ]] || { echo "smoke: no institutions/$inst" >&2; exit 64; }
+    docker build --build-arg BASE_IMAGE=moodle:smoke -t "moodle-$inst:smoke" "institutions/$inst"
+    image="moodle-$inst:smoke"
+  fi
+fi
+
+work="$(mktemp -d)"
+cp host/compose.yml "$work/"
+mkdir "$work/config"
+cat > "$work/.env" <<EOF
+APP_IMAGE=$image
+WWWROOT=http://localhost:$port
+SERVER_NAME=http://:80
+HTTP_PORT=$port
+HTTPS_PORT=$((port + 1))
+DB_PASS=smoke
+DB_ROOT_PASS=smoke
+ADMIN_PASS=Smoke-Test-1
+${SMOKE_ENV:-}
+EOF
+
+dc() { docker compose -p smoke --project-directory "$work" "$@"; }
+cleanup() {
+  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
+    echo "smoke: left running; stop with: docker compose -p smoke --project-directory $work down -v"
+  else
+    dc down -v --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$work"
+  fi
+}
+trap cleanup EXIT
+
+fail() { echo "smoke: FAIL $*" >&2; dc logs --tail 60 app >&2 || true; exit 1; }
+
+dc up -d db app
+deadline=$((SECONDS + timeout))
+until curl -fsS -o /dev/null "http://localhost:$port/up"; do
+  (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
+  [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
+  sleep 5
+done
+echo "smoke: /up 200"
+
+code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/login/index.php")
+[[ "$code" == 200 ]] || fail "login page returned $code"
+echo "smoke: login page 200"
+
+dc up -d cron
+sleep 15
+[[ "$(dc ps -a --format '{{.State}}' cron)" == running ]] || fail "cron not running"
+[[ "$(dc logs cron)" == *"sis-cron: running"* ]] || fail "cron did not start"
+echo "smoke: cron running"
+
+if [[ -n "$inst" ]]; then
+  for component in $(jq -r '.locked.plugins // {} | keys[]' "institutions/$inst/settings.json"); do
+    n=$(dc exec -T db mysql -umoodle -psmoke -N moodle \
+      -e "select count(*) from mdl_config_plugins where plugin='$component' and name='version'" 2>/dev/null)
+    [[ "$n" -ge 1 ]] || fail "$component is not installed"
+    echo "smoke: $component installed"
+  done
+fi
+echo "smoke: PASS"
