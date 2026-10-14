@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Behaviour tests for docker/tk-settings.php. Run: tests/tk_settings_cli_test.sh
+# Behaviour tests for docker/sis-settings.php. Run: tests/sis_settings_cli_test.sh
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 tmp="$(mktemp -d)"
@@ -12,17 +12,17 @@ expect() {  # expect <name> <command...>: ok when the command succeeds
 
 cat > "$tmp/inst.json" <<'JSON'
 {"locked": {"core": {"authpreventaccountcreation": "1"},
-            "plugins": {"local_tkexample": {"remoteurl": "${TKEXAMPLE_REMOTE_URL}", "mode": "inst"}}}}
+            "plugins": {"local_sisexample": {"remoteurl": "${SISEXAMPLE_REMOTE_URL}", "mode": "inst"}}}}
 JSON
-echo '{"locked": {"plugins": {"local_tkexample": {"mode": "override"}}}}' > "$tmp/override.json"
+echo '{"locked": {"plugins": {"local_sisexample": {"mode": "override"}}}}' > "$tmp/override.json"
 
-run() { TK_INSTITUTION_SETTINGS="$tmp/inst.json" TK_OVERRIDE_SETTINGS="$tmp/override.json" php docker/tk-settings.php "$@"; }
+run() { SIS_INSTITUTION_SETTINGS="$tmp/inst.json" SIS_OVERRIDE_SETTINGS="$tmp/override.json" php docker/sis-settings.php "$@"; }
 
-expect "render exits 0" env TKEXAMPLE_REMOTE_URL=https://remote.test \
-  TK_INSTITUTION_SETTINGS="$tmp/inst.json" TK_OVERRIDE_SETTINGS="$tmp/override.json" \
-  php docker/tk-settings.php render "$tmp/locked.php"
+expect "render exits 0" env SISEXAMPLE_REMOTE_URL=https://remote.test \
+  SIS_INSTITUTION_SETTINGS="$tmp/inst.json" SIS_OVERRIDE_SETTINGS="$tmp/override.json" \
+  php docker/sis-settings.php render "$tmp/locked.php"
 expect "output is valid PHP" php -l "$tmp/locked.php"
-expect "env interpolated" grep -q "\['local_tkexample'\]\['remoteurl'\] = 'https://remote.test'" "$tmp/locked.php"
+expect "env interpolated" grep -q "\['local_sisexample'\]\['remoteurl'\] = 'https://remote.test'" "$tmp/locked.php"
 expect "override wins" grep -q "\['mode'\] = 'override'" "$tmp/locked.php"
 
 run render "$tmp/locked2.php" >/dev/null

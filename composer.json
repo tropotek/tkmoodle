@@ -1,5 +1,5 @@
 {
-    "name": "tropotek/tkmoodle",
+    "name": "tropotek/moodle",
     "description": "Moodle base image: runtime and core",
     "type": "project",
     "license": "GPL-3.0-or-later",

@@ -5,10 +5,10 @@
 }
 
 # /up answers from outside Moodle, so it works while Moodle is booting or upgrading.
-(tk_up) {
+(up) {
 	@up path /up /up/
 	handle @up {
-		root * /tk/www
+		root * /sis/www
 		rewrite * /up.php
 		php
 	}
@@ -19,7 +19,7 @@
 	encode zstd br gzip
 
 	route {
-		import tk_up
+		import up
 
 		@internalpaths path_regexp (?i)(/vendor/|/node_modules/|/composer\.(json|lock)$|/db/install\.xml$|/fixtures/|/behat/|/upgrade\.txt$)
 		respond @internalpaths 404

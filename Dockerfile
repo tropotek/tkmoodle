@@ -15,31 +15,31 @@ RUN install-php-extensions intl zip soap gd mysqli pdo_mysql exif xsl opcache so
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 
 ARG APP_UID=1000
-RUN useradd -m -u ${APP_UID} -g www-data tkuser \
+RUN useradd -m -u ${APP_UID} -g www-data moodle \
     && setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp \
-    && mkdir -p /moodledata /tk/bin /tk/www /tk/run /tk/institution /tk/config \
-    && echo '{}' > /tk/institution/settings.json \
-    && chown -R tkuser:www-data /app /config /data/caddy /moodledata /tk
-ENV PATH="/tk/bin:${PATH}"
-COPY docker/php.ini /usr/local/etc/php/conf.d/zz-tk.ini
+    && mkdir -p /moodledata /sis/bin /sis/www /sis/run /sis/institution /sis/config \
+    && echo '{}' > /sis/institution/settings.json \
+    && chown -R moodle:www-data /app /config /data/caddy /moodledata /sis
+ENV PATH="/sis/bin:${PATH}"
+COPY docker/php.ini /usr/local/etc/php/conf.d/zz-sis.ini
 COPY docker/Caddyfile /etc/caddy/Caddyfile
-USER tkuser
+USER moodle
 
 # core: Moodle from the root lock.
 FROM runtime AS core
-COPY --chown=tkuser:www-data composer.json composer.lock /app/
+COPY --chown=moodle:www-data composer.json composer.lock /app/
 RUN composer install --no-dev --no-interaction --prefer-dist && composer clear-cache
 
 # release: harness and internal plugins. Internal plugins are copied after
 # composer install, so no institution lock can remove them.
 FROM core AS release
-COPY --chown=tkuser:www-data --chmod=0755 docker/tk-entrypoint docker/tk-cron docker/tk-settings.php docker/tk-db.php /tk/bin/
-COPY --chown=tkuser:www-data docker/tk-settings-lib.php /tk/bin/
-COPY --chown=tkuser:www-data docker/up.php /tk/www/up.php
-COPY --chown=tkuser:www-data docker/config.php /app/moodle/config.php
-COPY --chown=tkuser:www-data plugins/local/ /app/moodle/public/local/
+COPY --chown=moodle:www-data --chmod=0755 docker/sis-entrypoint docker/sis-cron docker/sis-settings.php docker/sis-db.php /sis/bin/
+COPY --chown=moodle:www-data docker/sis-settings-lib.php /sis/bin/
+COPY --chown=moodle:www-data docker/up.php /sis/www/up.php
+COPY --chown=moodle:www-data docker/config.php /app/moodle/config.php
+COPY --chown=moodle:www-data plugins/local/ /app/moodle/public/local/
 EXPOSE 80 443
-ENTRYPOINT ["tk-entrypoint"]
+ENTRYPOINT ["sis-entrypoint"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
 
 # dev: release plus an editor, for bin/dev.
@@ -47,6 +47,6 @@ FROM release AS dev
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends vim-nox \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-USER tkuser
+USER moodle
 
 FROM release

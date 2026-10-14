@@ -1,6 +1,6 @@
 <?php
 // Moodle config. Everything site-specific comes from env; the "locked" settings come
-// from /tk/run/locked.php, which the entrypoint renders on every start.
+// from /sis/run/locked.php, which the entrypoint renders on every start.
 // getenv() is called inline, never stored: a variable here becomes a Moodle global.
 unset($CFG);
 global $CFG;
@@ -30,8 +30,8 @@ $CFG->routerconfigured = true;
 $CFG->disableupdateautodeploy = true;
 $CFG->disableupdatenotifications = true;
 
-if (is_file('/tk/run/locked.php')) {
-    require '/tk/run/locked.php';
+if (is_file('/sis/run/locked.php')) {
+    require '/sis/run/locked.php';
 }
 
 require_once(__DIR__ . '/lib/setup.php');

@@ -3,5 +3,5 @@
 require(__DIR__ . '/../../config.php');
 
 header('Content-Type: text/plain');
-echo "tkexample index v1\n";
-echo 'greeting: ' . s((string)get_config('local_tkexample', 'greeting')) . "\n";
+echo "sisexample index v1\n";
+echo 'greeting: ' . s((string)get_config('local_sisexample', 'greeting')) . "\n";
