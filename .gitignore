@@ -1,0 +1,14 @@
+# Local only
+/.idea
+/.vscode
+/_notes
+/spike
+/.superpowers
+
+# Environment files: everything except the committed template
+.env*
+!.env.example
+
+vendor/
+*.log
+.DS_Store
