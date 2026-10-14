@@ -1,4 +1,5 @@
-# A host runs a published image: copy this folder with a filled-in .env, then
+# A host runs a published image: copy this folder (with its config/ and backups/ folders)
+# and a filled-in .env, then
 #   docker compose pull && docker compose up -d
 # Upgrading is the same two commands after changing TAG.
 name: ${COMPOSE_PROJECT_NAME:-moodle}
@@ -44,6 +45,24 @@ services:
       - ./config:/sis/config:ro
     depends_on:
       - app
+
+  # One-shot backup and restore tools; skipped by up and pull:
+  #   docker compose run --rm dbtools sis-backup
+  #   docker compose run --rm dbtools sis-restore <name>
+  # BACKUP_DIR must exist: compose refuses a missing one rather than creating it as root.
+  dbtools:
+    image: ${DBTOOLS_IMAGE:-ghcr.io/tropotek/moodle-dbtools:${TAG:-latest}}
+    profiles: [tools]
+    env_file: .env
+    environment:
+      SIS_TARGET_INSTITUTION: ${INSTITUTION:-demo}
+    volumes:
+      - moodledata:/moodledata
+      - type: bind
+        source: ${BACKUP_DIR:-./backups}
+        target: /backups
+        bind:
+          create_host_path: false
 
   # Bundled database, on by default. To use an external MySQL 8.4 server instead:
   # delete this service, the depends_on under app, and the db volume below, then set

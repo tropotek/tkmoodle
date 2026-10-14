@@ -15,3 +15,7 @@ vendor/
 
 # MkDocs build output
 /site
+
+# A host's backups, never committed; the folder itself ships with host/
+host/backups/*
+!host/backups/.gitkeep

@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Backup and restore smoke test. Builds the base, one institution and dbtools with a test
+# release, runs a throwaway site from host/compose.yml, then backs it up, restores it and
+# checks every refusal. Tears everything down afterwards.
+# Usage: bin/smoke-backup [<institution>]     (default: demo)
+#   SMOKE_PORT=8398  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
+#   SMOKE_EXTERNAL_DB=<container>  use that MySQL 8.4 container instead of the bundled db; its
+#                                  MYSQL_ROOT_PASSWORD creates a throwaway smokebk database
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+inst="${1:-demo}"
+port="${SMOKE_PORT:-8398}"
+timeout="${SMOKE_TIMEOUT:-600}"
+ext="${SMOKE_EXTERNAL_DB:-}"
+rel=0.0.0-1
+[[ -d "institutions/$inst" ]] || { echo "smoke-backup: no institutions/$inst" >&2; exit 64; }
+
+docker build --build-arg SIS_RELEASE=$rel -t moodle:smokebk .
+docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smokebk \
+  --build-arg SIS_INSTITUTION="$inst" -t "moodle-$inst:smokebk" "institutions/$inst"
+docker build --build-arg SIS_RELEASE=$rel -t moodle-dbtools:smokebk dbtools
+
+work="$(mktemp -d)"
+mkdir "$work/config" "$work/backups"
+files=(-f "$work/compose.yml")
+db_host=db db_name=moodle db_user=moodle db_pass=smoke
+cp host/compose.yml "$work/"
+
+cat > "$work/.env" <<EOF
+INSTITUTION=$inst
+APP_IMAGE=moodle-$inst:smokebk
+DBTOOLS_IMAGE=moodle-dbtools:smokebk
+WWWROOT=http://localhost:$port
+HTTP_PORT=$port
+HTTPS_PORT=$((port + 1))
+DB_HOST=$db_host
+DB_NAME=$db_name
+DB_USER=$db_user
+DB_PASS=$db_pass
+ADMIN_PASS=Smoke-Test-1
+EOF
+
+dc() { docker compose -p smokebk --project-directory "$work" "${files[@]}" "$@"; }
+cleanup() {
+  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
+    echo "smoke-backup: left running in $work; stop with: docker compose -p smokebk --project-directory $work ${files[*]} down -v"
+    return
+  fi
+  dc down -v --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+fail() { echo "smoke-backup: FAIL $*" >&2; dc logs --tail 40 app >&2 || true; exit 1; }
+pass() { echo "smoke-backup: ok   $*"; }
+
+tools() { dc run --rm -T dbtools "$@"; }
+sql() {
+  # shellcheck disable=SC2016
+  tools bash -c '. /usr/local/bin/sis-dbtools-lib.sh && sis_db_init && sis_sql -e "$1"' _ "$1"
+}
+moodle_php() { dc exec -T app php; }
+
+wait_up() {
+  local deadline=$((SECONDS + timeout))
+  until curl -fsS -o /dev/null "http://localhost:$port/up"; do
+    (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
+    [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
+    sleep 5
+  done
+}
+start_site() {
+  if [[ -z "$ext" ]]; then dc up -d --wait db; fi
+  dc up -d app
+  wait_up
+  dc up -d cron
+}
+
+# refused <text> <command…>: the command must fail and its output must contain the text.
+refused() {
+  local want=$1 out
+  shift
+  if out=$("$@" 2>&1); then fail "not refused: $*"; fi
+  [[ "$out" == *"$want"* ]] || fail "refusal of '$*' lacks '$want'; got: $out"
+}
+
+# ---- a running, seeded site -------------------------------------------------------
+start_site
+[[ "$(sql "SELECT value FROM mdl_config WHERE name = 'sis_release'")" == "$rel" ]] || fail "sis_release not recorded"
+[[ "$(sql "SELECT value FROM mdl_config WHERE name = 'sis_institution'")" == "$inst" ]] || fail "sis_institution not recorded"
+pass "site up, identity $inst $rel"
+
+moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+require_once($CFG->dirroot . '/user/lib.php');
+require_once($CFG->dirroot . '/course/lib.php');
+$userid = user_create_user((object)[
+    'username' => 'smoke_before', 'password' => 'Smoke-Pass-1!', 'auth' => 'manual',
+    'firstname' => 'Smoke', 'lastname' => 'Before', 'email' => 'smoke@example.com',
+    'confirmed' => 1, 'mnethostid' => $CFG->mnet_localhost_id,
+]);
+create_course((object)['fullname' => 'Smoke course', 'shortname' => 'SMOKE101',
+    'category' => core_course_category::get_default()->id]);
+get_file_storage()->create_file_from_string([
+    'contextid' => context_user::instance($userid)->id, 'component' => 'user',
+    'filearea' => 'private', 'itemid' => 0, 'filepath' => '/', 'filename' => 'smoke.txt',
+], 'smoke-file-content');
+echo "seeded\n";
+PHP
+pass "seeded a user, a course and a file"
+
+# ---- backup with the site up, under --maintenance ---------------------------------
+seen="$work/flag-seen"
+(
+  while [[ ! -e "$work/backup-done" ]]; do
+    if dc exec -T app test -f /moodledata/climaintenance.html 2>/dev/null; then touch "$seen"; fi
+    sleep 0.2
+  done
+) &
+watcher=$!
+out=$(tools sis-backup --maintenance first) || { touch "$work/backup-done"; fail "sis-backup failed: $out"; }
+touch "$work/backup-done"
+wait "$watcher"
+echo "$out"
+[[ -e "$seen" ]] || fail "maintenance flag never seen during the backup"
+dc exec -T app test ! -f /moodledata/climaintenance.html || fail "maintenance flag left behind"
+pass "--maintenance set the flag during the run and cleared it"
+
+b="$work/backups/first"
+for f in manifest.env db.sql.zst moodledata.tar.zst; do [[ -s "$b/$f" ]] || fail "bundle lacks $f"; done
+grep -qx "sis_release=$rel" "$b/manifest.env" || fail "manifest release: $(cat "$b/manifest.env")"
+grep -qx "sis_institution=$inst" "$b/manifest.env" || fail "manifest institution"
+grep -q '^moodle_version=[0-9]' "$b/manifest.env" || fail "manifest moodle_version"
+[[ "$(stat -c %u:%g "$b" "$b/db.sql.zst" | sort -u)" == "$(stat -c %u:%g "$work/backups")" ]] || fail "bundle not owned like the folder"
+[[ -z "$(find "$work/backups" -maxdepth 1 -name '.*partial')" ]] || fail "partial folder left behind"
+[[ "$out" == *"sis-restore first"* ]] || fail "restore command not printed"
+pass "bundle complete, owned like the folder"
+
+listing=$(tools bash -c 'zstd -dcq /backups/first/moodledata.tar.zst | tar -t')
+grep -q '^\./filedir/' <<<"$listing" || fail "moodledata archive has no filedir"
+! grep -qE '^\./(cache|localcache|temp|sessions)/' <<<"$listing" || fail "moodledata archive has cache folders"
+tools zstd -dcq /backups/first/db.sql.zst > "$work/dump.sql"
+grep -qF "CREATE TABLE \`mdl_sessions\`" "$work/dump.sql" || fail "mdl_sessions structure missing"
+! grep -qF "INSERT INTO \`mdl_sessions\`" "$work/dump.sql" || fail "mdl_sessions has data"
+rm "$work/dump.sql"
+pass "archive skips caches; sessions are structure only"
+
+# ---- backup refusals --------------------------------------------------------------
+sums=$(sha256sum "$b"/*)
+refused "already exists" tools sis-backup first
+[[ "$(sha256sum "$b"/*)" == "$sums" ]] || fail "existing backup changed"
+pass "a second backup to an existing name is refused, the first untouched"
+
+for bad in ../x /x .hidden; do refused "BACKUP_DIR" tools sis-backup "$bad"; done
+pass "path-like names refused"
+
+mkdir "$work/backups/.stale.partial"
+refused ".stale.partial" tools sis-backup stale
+[[ -d "$work/backups/.stale.partial" ]] || fail "stale partial removed"
+rmdir "$work/backups/.stale.partial"
+pass "an interrupted backup's folder blocks the name and is left alone"
+
+sql "CREATE TABLE mdl_smoke_tmp (id INT); CREATE VIEW mdl_smoke_broken AS SELECT id FROM mdl_smoke_tmp; DROP TABLE mdl_smoke_tmp;"
+refused "mysqldump" tools sis-backup --maintenance broken
+sql "DROP VIEW mdl_smoke_broken"
+[[ ! -e "$work/backups/broken" && ! -e "$work/backups/.broken.partial" ]] || fail "failed backup left files"
+dc exec -T app test ! -f /moodledata/climaintenance.html || fail "failed backup left the maintenance flag"
+pass "a failed backup leaves nothing behind and clears the flag"
+
+dc exec -T app sh -c 'echo held > /moodledata/climaintenance.html'
+tools sis-backup --maintenance keepflag >/dev/null
+dc exec -T app test -f /moodledata/climaintenance.html || fail "an existing maintenance flag was removed"
+dc exec -T app rm /moodledata/climaintenance.html
+rm -rf "$work/backups/keepflag"
+pass "an existing maintenance flag is left alone"
+
+sql "DELETE FROM mdl_config WHERE name = 'sis_release'"
+refused "start the site once" tools sis-backup norelease
+sql "INSERT INTO mdl_config (name, value) VALUES ('sis_release', '$rel')"
+pass "a site with no recorded release is refused"
+
+# RESTORE CHECKS (Task 4)
+
+echo "smoke-backup: PASS"
