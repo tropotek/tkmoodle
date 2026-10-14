@@ -1,0 +1,20 @@
+{
+    "name": "tropotek/tkmoodle",
+    "description": "Moodle base image: runtime and core",
+    "type": "project",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "moodle/composer-installer": "^1.2",
+        "moodle/moodle": "5.3.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": false,
+            "moodle/composer-installer": true
+        },
+        "audit": {
+            "block-insecure": false
+        },
+        "sort-packages": true
+    }
+}

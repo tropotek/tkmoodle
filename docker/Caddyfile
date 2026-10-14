@@ -1,0 +1,62 @@
+{
+	skip_install_trust
+	{$CADDY_GLOBAL_OPTIONS}
+	frankenphp
+}
+
+# /up answers from outside Moodle, so it works while Moodle is booting or upgrading.
+(tk_up) {
+	@up path /up /up/
+	handle @up {
+		root * /tk/www
+		rewrite * /up.php
+		php
+	}
+}
+
+{$SERVER_NAME:http://:80} {
+	root /app/moodle/public
+	encode zstd br gzip
+
+	route {
+		import tk_up
+
+		@internalpaths path_regexp (?i)(/vendor/|/node_modules/|/composer\.(json|lock)$|/db/install\.xml$|/fixtures/|/behat/|/upgrade\.txt$)
+		respond @internalpaths 404
+
+		# PHP files that exist run directly, keeping PATH_INFO for slash arguments.
+		@phpFiles {
+			path_regexp \.php($|/)
+			file {
+				split_path .php
+			}
+		}
+		php @phpFiles {
+			split .php
+		}
+
+		@dirIndex file {
+			try_files {path}/index.php
+		}
+		rewrite @dirIndex {path}/index.php
+
+		@phpAfterRewrite {
+			path_regexp \.php($|/)
+			file {
+				split_path .php
+			}
+		}
+		php @phpAfterRewrite {
+			split .php
+		}
+
+		@static file
+		file_server @static
+
+		# Everything else goes to Moodle's router.
+		rewrite * /r.php{path}
+		php {
+			split .php
+		}
+	}
+}
