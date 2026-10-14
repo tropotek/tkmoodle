@@ -1,0 +1,36 @@
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck docker/sis-entrypoint docker/sis-cron bin/*
+
+      - name: php -l
+        run: find docker plugins tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: composer validate
+        run: |
+          composer validate --no-check-publish
+          for dir in institutions/*/; do
+            if [[ "$(basename "$dir")" == _* ]]; then
+              composer validate --no-check-publish --no-check-lock -d "$dir"
+            else
+              composer validate --no-check-publish -d "$dir"
+            fi
+          done
+
+      - name: check-lock
+        run: bin/check-lock

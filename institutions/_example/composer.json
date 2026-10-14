@@ -1,0 +1,44 @@
+{
+    "name": "tropotek/moodle-example",
+    "description": "Institution template",
+    "type": "project",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "moodle/composer-installer": "^1.2",
+        "moodle/moodle": "5.3.0",
+        "jonof/moodle-block_completion_progress": "2026101200",
+        "moodleou/moodle-report_editdates": "2025072300"
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/jonof/moodle-block_completion_progress.git",
+            "no-api": true
+        },
+        {
+            "type": "package",
+            "package": [
+                {
+                    "name": "moodleou/moodle-report_editdates",
+                    "version": "2025072300",
+                    "type": "moodle-report",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/moodleou/moodle-report_editdates.git",
+                        "reference": "96fc7e855ad3ca7b06526fafe3ee742aff8acdaa"
+                    }
+                }
+            ]
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "composer/installers": false,
+            "moodle/composer-installer": true
+        },
+        "audit": {
+            "block-insecure": false
+        },
+        "sort-packages": true
+    }
+}

@@ -1,0 +1,149 @@
+{
+    "name": "tropotek/moodle-demo",
+    "description": "Demo institution",
+    "type": "project",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "catalyst/moodle-tool_objectfs": "2026041012",
+        "h5p/moodle-mod_hvp": "2026081300",
+        "jonof/moodle-block_completion_progress": "2026101200",
+        "justinhunt/moodle-tiny_snippet": "2026042000",
+        "lsuonline/moodle-block_quickmail": "2025102302",
+        "mediamaisteri/moodle-tiny_fontsize": "2025062900",
+        "moodle-an-hochschulen/moodle-theme_boost_union": "2026042014",
+        "moodle/composer-installer": "^1.2",
+        "moodle/moodle": "5.3.0",
+        "moodleou/moodle-report_customsql": "2026021600",
+        "moodleou/moodle-report_editdates": "2025072300",
+        "ndunand/moodle-tool_mergeusers": "2026081302",
+        "turnitin/moodle-plagiarism_turnitinsim": "2026072901",
+        "ucla/moodle-mod_zoom": "5.5.1"
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/jonof/moodle-block_completion_progress.git",
+            "no-api": true
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/jpahullo/moodle-tool_mergeusers.git",
+            "no-api": true
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/jrchamp/moodle-mod_zoom.git",
+            "no-api": true
+        },
+        {
+            "type": "package",
+            "package": [
+                {
+                    "name": "h5p/moodle-mod_hvp",
+                    "version": "2026081300",
+                    "type": "moodle-mod",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/h5p/moodle-mod_hvp.git",
+                        "reference": "a4029b4e690eb65091cc755b8f112e07410ca6d7"
+                    }
+                },
+                {
+                    "name": "lsuonline/moodle-block_quickmail",
+                    "version": "2025102302",
+                    "type": "moodle-block",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/lsuonline/lsuce-block_quickmail.git",
+                        "reference": "f668120f43a38cb3fd6d3c22a4f211d6bc438223"
+                    }
+                },
+                {
+                    "name": "mediamaisteri/moodle-tiny_fontsize",
+                    "version": "2025062900",
+                    "type": "moodle-tiny",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/mediamaisteri/moodle-tiny_fontsize.git",
+                        "reference": "f43f637317cef179e34ef7da774c67153f8f6f4c"
+                    }
+                },
+                {
+                    "name": "justinhunt/moodle-tiny_snippet",
+                    "version": "2026042000",
+                    "type": "moodle-tiny",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/justinhunt/moodle-tiny_snippet.git",
+                        "reference": "1968b160b9b3e776832618865bae227787d4b965"
+                    }
+                },
+                {
+                    "name": "moodleou/moodle-report_customsql",
+                    "version": "2026021600",
+                    "type": "moodle-report",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/moodleou/moodle-report_customsql.git",
+                        "reference": "54e5b6b547265bfd4903252e465c451287e22111"
+                    }
+                },
+                {
+                    "name": "moodleou/moodle-report_editdates",
+                    "version": "2025072300",
+                    "type": "moodle-report",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/moodleou/moodle-report_editdates.git",
+                        "reference": "96fc7e855ad3ca7b06526fafe3ee742aff8acdaa"
+                    }
+                },
+                {
+                    "name": "turnitin/moodle-plagiarism_turnitinsim",
+                    "version": "2026072901",
+                    "type": "moodle-plagiarism",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/turnitin/moodle-plagiarism_turnitinsim.git",
+                        "reference": "d498816f722f6e02f372ffdfd0fb5a24602567eb"
+                    }
+                },
+                {
+                    "name": "catalyst/moodle-tool_objectfs",
+                    "version": "2026041012",
+                    "type": "moodle-tool",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/catalyst/moodle-tool_objectfs.git",
+                        "reference": "e2ac620651c5ecdec003f1133a3a38e87195d4c9"
+                    }
+                },
+                {
+                    "name": "moodle-an-hochschulen/moodle-theme_boost_union",
+                    "version": "2026042014",
+                    "type": "moodle-theme",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/moodle-an-hochschulen/moodle-theme_boost_union.git",
+                        "reference": "c8fbb2e9f2ba3976e3bfb1d2266125f3727b2e0a"
+                    }
+                }
+            ]
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "composer/installers": false,
+            "moodle/composer-installer": true
+        },
+        "audit": {
+            "block-insecure": false
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "git -C moodle/public/mod/hvp submodule update --init --recursive"
+        ]
+    }
+}

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Fail when an institution's composer.lock pins a different Moodle core than the
+# root composer.lock, which would install a second copy of core into its image.
+# Usage: bin/check-lock [<institution>...]   (default: every institution not starting with _)
+set -euo pipefail
+root="${SIS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+core_version() { jq -er '.packages[] | select(.name == "moodle/moodle") | .version' "$1"; }
+
+base=$(core_version "$root/composer.lock") || { echo "check-lock: moodle/moodle missing from composer.lock" >&2; exit 1; }
+
+insts=("$@")
+if [[ ${#insts[@]} -eq 0 ]]; then
+  for dir in "$root"/institutions/*/; do
+    name=$(basename "$dir")
+    [[ "$name" == _* ]] || insts+=("$name")
+  done
+fi
+
+rc=0
+for inst in "${insts[@]}"; do
+  if ! version=$(core_version "$root/institutions/$inst/composer.lock" 2>/dev/null); then
+    echo "check-lock: $inst: moodle/moodle missing from institutions/$inst/composer.lock" >&2
+    rc=1
+  elif [[ "$version" != "$base" ]]; then
+    echo "check-lock: $inst: moodle/moodle $version, root is $base" >&2
+    rc=1
+  else
+    echo "check-lock: $inst: ok ($version)"
+  fi
+done
+exit $rc

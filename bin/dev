@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Local development stack.
+#   bin/dev up                     build moodle:dev and start it on :8300
+#   INSTITUTION=demo bin/dev up    build that institution on the dev base and start it
+#   bin/dev <compose args>         anything else goes to docker compose (logs, exec, down -v ...)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+dc() { docker compose -f compose.dev.yml "$@"; }
+
+if [[ "${1:-up}" == up ]]; then
+  [[ $# -gt 0 ]] && shift
+  docker build --target dev -t moodle:dev .
+  APP_IMAGE=moodle:dev
+  if [[ -n "${INSTITUTION:-}" ]]; then
+    [[ -d "institutions/$INSTITUTION" ]] || { echo "dev: no institutions/$INSTITUTION" >&2; exit 64; }
+    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:dev -t "moodle-$INSTITUTION:dev" "institutions/$INSTITUTION"
+    APP_IMAGE="moodle-$INSTITUTION:dev"
+  fi
+  export APP_IMAGE
+  dc up -d "$@"
+  echo "dev: http://localhost:${DEV_PORT:-8300} (admin / Dev-Admin-1); bin/dev logs -f app"
+else
+  dc "$@"
+fi

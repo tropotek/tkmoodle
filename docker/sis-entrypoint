@@ -1,0 +1,74 @@
+#!/bin/sh
+# Container entrypoint. Renders the locked settings, then either boots Moodle
+# (CMD frankenphp: install or upgrade, then serve) or runs the given command
+# (sis-cron, php, sh, ...) with the same config.
+set -eu
+
+M=/app/moodle
+log() { printf 'sis: %s\n' "$*"; }
+
+# Caddy's site address comes from WWWROOT: an https URL serves that hostname with a
+# Let's Encrypt certificate; anything else serves plain HTTP on port 80.
+if [ -z "${SERVER_NAME:-}" ]; then
+    case "${WWWROOT:-}" in
+        https://*) SERVER_NAME="${WWWROOT#https://}"; SERVER_NAME="${SERVER_NAME%%/*}" ;;
+        *) SERVER_NAME="http://:80" ;;
+    esac
+    export SERVER_NAME
+fi
+
+rm -f /sis/run/booted
+sis-settings.php render /sis/run/locked.php
+
+if [ "${1:-}" != "frankenphp" ]; then
+    exec "$@"
+fi
+
+sis-db.php wait "${DB_WAIT_TIMEOUT:-120}"
+
+set +e
+sis-db.php installed
+state=$?
+set -e
+
+case "$state" in
+    0)
+        log "existing site: upgrading"
+        php "$M/admin/cli/maintenance.php" --enable
+        if php "$M/admin/cli/uninstall_plugins.php" --purge-missing --run \
+            && php "$M/admin/cli/upgrade.php" --non-interactive; then
+            php "$M/admin/cli/maintenance.php" --disable
+        else
+            # Serve anyway: visitors get Moodle's maintenance page, /up stays 503 and
+            # the healthcheck stays red. Recreating the container retries the upgrade.
+            log "UPGRADE FAILED: site left in maintenance; fix the image or restore the database, then recreate the container"
+            exec "$@"
+        fi
+        sis-settings.php defaults
+        ;;
+    1)
+        : "${ADMIN_PASS:?ADMIN_PASS is required for the first install}"
+        log "fresh install"
+        php "$M/admin/cli/install_database.php" --agree-license \
+            --fullname="${SITE_FULLNAME:-Moodle}" \
+            --shortname="${SITE_SHORTNAME:-moodle}" \
+            --adminuser="${ADMIN_USER:-admin}" \
+            --adminpass="$ADMIN_PASS" \
+            --adminemail="${ADMIN_EMAIL:-admin@example.com}"
+        sis-settings.php defaults
+        ;;
+    3)
+        log "INCOMPLETE INSTALL: the database has Moodle tables but the first install never finished"
+        log "empty the database (or restore a backup) and start the container again"
+        exit 1
+        ;;
+    *)
+        log "cannot read the database state; refusing to install or upgrade"
+        exit 1
+        ;;
+esac
+
+php "$M/admin/cli/purge_caches.php"
+touch /sis/run/booted
+log "boot done"
+exec "$@"

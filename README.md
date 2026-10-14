@@ -10,7 +10,8 @@ and an `.env`. It never builds anything.
 | `Dockerfile`, `composer.json` | the base image |
 | `docker/` | entrypoint, settings renderer, web and PHP config |
 | `plugins/` | internal plugins, baked into every image |
-| `institutions/<name>/` | one institution: plugins (`composer.json`/lock) and `settings.json`; `_`-prefixed folders are templates |
+| `institutions/<name>/` | one institution, data only: plugins (`composer.json`/lock) and `settings.json`; `_`-prefixed folders are templates |
+| `institutions/Dockerfile` | builds any institution on the base image |
 | `host/` | what a server needs to run an image |
 | `bin/` | `dev`, `smoke`, `composer`, `check-lock` |
 
