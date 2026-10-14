@@ -35,9 +35,15 @@ case "$state" in
     0)
         log "existing site: upgrading"
         php "$M/admin/cli/maintenance.php" --enable
-        php "$M/admin/cli/uninstall_plugins.php" --purge-missing --run
-        php "$M/admin/cli/upgrade.php" --non-interactive
-        php "$M/admin/cli/maintenance.php" --disable
+        if php "$M/admin/cli/uninstall_plugins.php" --purge-missing --run \
+            && php "$M/admin/cli/upgrade.php" --non-interactive; then
+            php "$M/admin/cli/maintenance.php" --disable
+        else
+            # Serve anyway: visitors get Moodle's maintenance page, /up stays 503 and
+            # the healthcheck stays red. Recreating the container retries the upgrade.
+            log "UPGRADE FAILED: site left in maintenance; fix the image or restore the database, then recreate the container"
+            exec "$@"
+        fi
         ;;
     1)
         : "${ADMIN_PASS:?ADMIN_PASS is required for the first install}"

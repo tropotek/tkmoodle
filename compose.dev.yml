@@ -1,5 +1,5 @@
 # Local development. Start it with bin/dev, which builds the images this file runs.
-# Plugin code and the harness files are bind-mounted, so edits are live.
+# Plugin code is bind-mounted, so edits are live; harness changes need bin/dev up (a cached rebuild).
 name: moodle-dev
 
 x-env: &env
@@ -16,13 +16,6 @@ x-env: &env
 x-mounts: &mounts
   - moodledata:/moodledata
   - ./plugins/local/sisexample:/app/moodle/public/local/sisexample
-  - ./docker/sis-entrypoint:/sis/bin/sis-entrypoint:ro
-  - ./docker/sis-cron:/sis/bin/sis-cron:ro
-  - ./docker/sis-settings.php:/sis/bin/sis-settings.php:ro
-  - ./docker/sis-settings-lib.php:/sis/bin/sis-settings-lib.php:ro
-  - ./docker/sis-db.php:/sis/bin/sis-db.php:ro
-  - ./docker/up.php:/sis/www/up.php:ro
-  - ./docker/config.php:/app/moodle/config.php:ro
 
 services:
   app:
