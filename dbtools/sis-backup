@@ -6,6 +6,8 @@
 set -euo pipefail
 # shellcheck source=dbtools/sis-dbtools-lib.sh
 . "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
+# The dump holds password hashes and secrets: keep each backup private to its owner.
+umask 077
 
 usage() { echo "usage: sis-backup [--maintenance] [<name>]"; }
 maintenance=0 name=""
@@ -24,12 +26,7 @@ sis_check_name "$name"
 final=/backups/$name
 partial=/backups/.$name.partial
 [[ ! -e "$final" ]] || die "backup $name already exists; choose another name"
-[[ ! -e "$partial" ]] || die "backups/.$name.partial is left from an interrupted backup; remove it, or choose another name"
-probe=/backups/.sis-write-test.$$
-if ! touch "$probe" 2>/dev/null; then
-  die "cannot write to BACKUP_DIR; on Docker Desktop share the folder, on SELinux label it (see the configuration docs)"
-fi
-rm -f "$probe"
+[[ ! -e "$partial" ]] || die "BACKUP_DIR/.$name.partial is left from an interrupted backup; remove it, or choose another name"
 
 sis_db_init
 [[ -n "$(sis_sql -e "SHOW TABLES LIKE 'mdl\\_config'")" ]] || die "no Moodle site in database $DB_NAME"
@@ -39,6 +36,14 @@ institution=$(sis_config sis_institution)
 moodle_version=$(sis_config version)
 moodle_release=$(sis_config release)
 
+if ! mkdir "$partial" 2>/dev/null; then
+  die "cannot write to BACKUP_DIR; on Docker Desktop share the folder, on SELinux label it (see the configuration docs)"
+fi
+# Owned like the folder from the start, so a backup killed outright leaves a folder its
+# owner can remove.
+owner=$(stat -c %u:%g /backups)
+chown "$owner" "$partial"
+
 complete=0 flag=""
 cleanup() {
   [[ -z "$flag" ]] || rm -f "$flag"
@@ -47,7 +52,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-mkdir "$partial"
 
 if ((maintenance)) && [[ ! -e /moodledata/climaintenance.html ]]; then
   flag=/moodledata/climaintenance.html
@@ -70,7 +74,7 @@ sis_tar_moodledata | zstd -q -T0 -o "$partial/moodledata.tar.zst"
   echo "dbtools_release=$SIS_RELEASE"
 } > "$partial/manifest.env"
 
-chown -R "$(stat -c %u:%g /backups)" "$partial"
+chown -R "$owner" "$partial"
 mv "$partial" "$final"
 complete=1
 

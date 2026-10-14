@@ -21,7 +21,10 @@ its layers with the bundled database's.
 | `moodledata.tar.zst` | uploaded files, without the caches Moodle rebuilds |
 
 Moodle's code isn't in the backup: it's in the image, and the manifest names the release that
-carries it. A backup never overwrites another, and a failed one leaves nothing behind. Old
+carries it. A backup never overwrites another, and a failed one leaves nothing behind. One
+killed outright (a reboot, `docker kill`) leaves a `.<name>.partial` folder that blocks the name
+until you delete it, and with `--maintenance` also leaves `climaintenance.html` in moodledata,
+which keeps the site in maintenance: `docker compose exec app rm /moodledata/climaintenance.html`. Old
 backups are yours to prune or copy elsewhere. [Configuration](configuration.md#backups) covers
 keeping them outside the site's folder.
 
@@ -34,6 +37,10 @@ sed -i 's/^TAG=.*/TAG=5.3.0-3/' .env
 docker compose pull && docker compose up -d
 docker compose logs -f app
 ```
+
+`pull` skips `dbtools`, which is tagged with the same `TAG`. A pinned `TAG` changes its image too.
+With `TAG=latest`, also run `docker compose pull dbtools`, or it stays on the release you first
+backed up with.
 
 On start the app container:
 

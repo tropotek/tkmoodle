@@ -42,7 +42,6 @@ sis_db_init() {
   : "${DB_PASS:?DB_PASS is not set in .env}"
   DB_HOST=${DB_HOST:-db} DB_PORT=${DB_PORT:-3306} DB_NAME=${DB_NAME:-moodle} DB_USER=${DB_USER:-moodle}
   SIS_MYCNF=$(mktemp)
-  chmod 600 "$SIS_MYCNF"
   {
     echo '[client]'
     echo "host=$(sis_mycnf_quote "$DB_HOST")"

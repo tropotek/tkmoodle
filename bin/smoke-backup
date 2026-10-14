@@ -191,7 +191,8 @@ grep -q '^moodle_version=[0-9]' "$b/manifest.env" || fail "manifest moodle_versi
 [[ "$(stat -c %u:%g "$b" "$b/db.sql.zst" | sort -u)" == "$(stat -c %u:%g "$work/backups")" ]] || fail "bundle not owned like the folder"
 [[ -z "$(find "$work/backups" -maxdepth 1 -name '.*partial')" ]] || fail "partial folder left behind"
 [[ "$out" == *"sis-restore first"* ]] || fail "restore command not printed"
-pass "bundle complete, owned like the folder"
+[[ "$(stat -c %a "$b") $(stat -c %a "$b/db.sql.zst")" == "700 600" ]] || fail "bundle readable by others: $(stat -c '%a %n' "$b" "$b"/*)"
+pass "bundle complete, owned like the folder, private to its owner"
 
 listing=$(tools bash -c 'zstd -dcq /backups/first/moodledata.tar.zst | tar -t')
 grep -q '^\./filedir/' <<<"$listing" || fail "moodledata archive has no filedir"
@@ -211,11 +212,22 @@ pass "a second backup to an existing name is refused, the first untouched"
 for bad in ../x /x .hidden; do refused "BACKUP_DIR" tools sis-backup "$bad"; done
 pass "path-like names refused"
 
-mkdir "$work/backups/.stale.partial"
-refused ".stale.partial" tools sis-backup stale
-[[ -d "$work/backups/.stale.partial" ]] || fail "stale partial removed"
-rmdir "$work/backups/.stale.partial"
-pass "an interrupted backup's folder blocks the name and is left alone"
+# A backup killed outright leaves its .partial folder: the refusal names it, and the
+# backup folder's owner can remove it.
+tools sis-backup killed >/dev/null 2>&1 &
+runner=$!
+deadline=$((SECONDS + 60))
+until [[ -e "$work/backups/.killed.partial/db.sql.zst" ]]; do
+  (( SECONDS < deadline )) || fail "the backup to kill never started its dump"
+  sleep 0.1
+done
+container=$(docker ps -q --filter label=com.docker.compose.project=smokebk --filter label=com.docker.compose.oneoff=True)
+docker kill "$container" >/dev/null
+wait "$runner" || true
+refused "BACKUP_DIR/.killed.partial" tools sis-backup killed
+[[ -d "$work/backups/.killed.partial" ]] || fail "the interrupted backup's folder was removed"
+rm -rf "$work/backups/.killed.partial" 2>/dev/null || fail "the folder's owner cannot remove an interrupted backup"
+pass "an interrupted backup blocks its name, and the folder's owner can remove it"
 
 sql "CREATE TABLE mdl_smoke_tmp (id INT); CREATE VIEW mdl_smoke_broken AS SELECT id FROM mdl_smoke_tmp; DROP TABLE mdl_smoke_tmp;"
 refused "mysqldump" tools sis-backup --maintenance broken
@@ -273,6 +285,7 @@ pass "another institution's backup refused"
 
 copy_with newer sis_release 0.0.0-2
 refused "TAG=0.0.0-2" tools sis-restore newer
+refused "docker compose pull dbtools" tools sis-restore newer
 unchanged "newer release"
 pass "a newer release's backup refused, naming the TAG"
 
