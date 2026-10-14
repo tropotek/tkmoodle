@@ -18,7 +18,7 @@ if [[ -z "$image" ]]; then
   image=moodle:smoke
   if [[ -n "$inst" ]]; then
     [[ -d "institutions/$inst" ]] || { echo "smoke: no institutions/$inst" >&2; exit 64; }
-    docker build --build-arg BASE_IMAGE=moodle:smoke -t "moodle-$inst:smoke" "institutions/$inst"
+    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smoke -t "moodle-$inst:smoke" "institutions/$inst"
     image="moodle-$inst:smoke"
   fi
 fi
