@@ -1,7 +1,7 @@
 # Running an image
 
 1. Copy this folder to the server. Copy `.env.example` to `.env`, then set
-   `INSTITUTION`, `TAG`, `WWWROOT`, `SERVER_NAME` and every password.
+   `INSTITUTION`, `TAG`, `WWWROOT` and every password.
 2. Run `docker compose pull && docker compose up -d`.
 3. Watch the first install with `docker compose logs -f app` until `sis: boot done`.
 
@@ -31,6 +31,19 @@ skipped.
 
 Delete the `db` service, its `depends_on` under `app`, and the `db` volume from
 `compose.yml`, then point the `DB_*` values in `.env` at the server.
+
+## Optional settings
+
+These have working defaults and are left out of `.env.example`. Add them to `.env`
+only to change them:
+
+| Variable | Default |
+|---|---|
+| `SITE_SHORTNAME` | `moodle` (first install only) |
+| `ADMIN_USER` | `admin` (first install only) |
+| `DB_WAIT_TIMEOUT` | `120` seconds to wait for the database on start |
+| `SERVER_NAME` | derived from `WWWROOT` |
+| `CADDY_GLOBAL_OPTIONS` | empty; extra Caddy global options |
 
 ## Health
 

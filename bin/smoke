@@ -29,11 +29,9 @@ mkdir "$work/config"
 cat > "$work/.env" <<EOF
 APP_IMAGE=$image
 WWWROOT=http://localhost:$port
-SERVER_NAME=http://:80
 HTTP_PORT=$port
 HTTPS_PORT=$((port + 1))
 DB_PASS=smoke
-DB_ROOT_PASS=smoke
 ADMIN_PASS=Smoke-Test-1
 ${SMOKE_ENV:-}
 EOF

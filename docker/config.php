@@ -6,13 +6,13 @@ unset($CFG);
 global $CFG;
 $CFG = new stdClass();
 
-$CFG->dbtype    = getenv('DB_TYPE') ?: 'mysqli';
+$CFG->dbtype    = 'mysqli';
 $CFG->dblibrary = 'native';
 $CFG->dbhost    = getenv('DB_HOST') ?: 'db';
 $CFG->dbname    = getenv('DB_NAME') ?: 'moodle';
 $CFG->dbuser    = getenv('DB_USER') ?: 'moodle';
 $CFG->dbpass    = getenv('DB_PASS') ?: '';
-$CFG->prefix    = getenv('DB_PREFIX') ?: 'mdl_';
+$CFG->prefix    = 'mdl_';
 $CFG->dboptions = [
     'dbport'      => (int)(getenv('DB_PORT') ?: 3306),
     'dbcollation' => 'utf8mb4_unicode_ci',

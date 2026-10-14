@@ -10,11 +10,6 @@ declare(strict_types=1);
 mysqli_report(MYSQLI_REPORT_OFF);
 
 function sis_db_connect(?string &$error): ?mysqli {
-    $type = getenv('DB_TYPE') ?: 'mysqli';
-    if ($type !== 'mysqli') {
-        $error = "DB_TYPE '$type' is not supported (mysqli only)";
-        return null;
-    }
     $db = mysqli_init();
     $ok = @$db->real_connect(
         getenv('DB_HOST') ?: 'db',
@@ -36,7 +31,7 @@ $error = null;
 if ($cmd === 'wait') {
     $deadline = time() + (int)($argv[2] ?? 120);
     while (!sis_db_connect($error)) {
-        if (str_starts_with((string)$error, 'DB_TYPE') || time() >= $deadline) {
+        if (time() >= $deadline) {
             fwrite(STDERR, "sis-db: database not reachable: $error\n");
             exit(1);
         }
@@ -52,8 +47,7 @@ if ($cmd === 'installed') {
         fwrite(STDERR, "sis-db: $error\n");
         exit(2);
     }
-    $table = str_replace('_', '\\_', $db->real_escape_string((getenv('DB_PREFIX') ?: 'mdl_') . 'config'));
-    $result = $db->query("SHOW TABLES LIKE '$table'");
+    $result = $db->query("SHOW TABLES LIKE 'mdl\\_config'");
     if ($result === false) {
         fwrite(STDERR, "sis-db: {$db->error}\n");
         exit(2);

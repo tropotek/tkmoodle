@@ -7,6 +7,16 @@ set -eu
 M=/app/moodle
 log() { printf 'sis: %s\n' "$*"; }
 
+# Caddy's site address comes from WWWROOT: an https URL serves that hostname with a
+# Let's Encrypt certificate; anything else serves plain HTTP on port 80.
+if [ -z "${SERVER_NAME:-}" ]; then
+    case "${WWWROOT:-}" in
+        https://*) SERVER_NAME="${WWWROOT#https://}"; SERVER_NAME="${SERVER_NAME%%/*}" ;;
+        *) SERVER_NAME="http://:80" ;;
+    esac
+    export SERVER_NAME
+fi
+
 rm -f /sis/run/booted
 sis-settings.php render /sis/run/locked.php
 
