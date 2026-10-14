@@ -41,6 +41,10 @@ check('validate: array leaf', throws(fn() => sis_settings_validate(['defaults' =
 check('validate: null leaf', throws(fn() => sis_settings_validate(['defaults' => ['core' => ['a' => null]]], 'x'), 'must be a scalar'));
 check('validate: bad component', throws(fn() => sis_settings_validate(['locked' => ['plugins' => ['Bad-Name' => ['a' => '1']]]], 'x'), 'invalid component'));
 check('validate: bad key', throws(fn() => sis_settings_validate(['locked' => ['core' => ['a b' => '1']]], 'x'), 'invalid key'));
+check('validate: key starting with a digit', throws(fn() => sis_settings_validate(['locked' => ['core' => ['1abc' => 'x']]], 'x'), 'invalid key'));
+check('validate: numeric key', throws(fn() => sis_settings_validate(['locked' => ['core' => ['0' => 'x']]], 'x')));
+check('validate: list under core', throws(fn() => sis_settings_validate(['locked' => ['core' => ['x', 'y']]], 'x'), 'must be an object'));
+check('validate: list under a component', throws(fn() => sis_settings_validate(['locked' => ['plugins' => ['local_x' => ['a']]]], 'x'), 'must be an object'));
 check('validate: good data passes', !throws(fn() => sis_settings_validate(['defaults' => ['core' => ['timezone' => 'UTC'], 'plugins' => ['theme_boost_union' => ['x' => 1]]]], 'x')));
 
 // merge

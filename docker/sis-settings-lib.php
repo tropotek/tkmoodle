@@ -43,7 +43,7 @@ function sis_settings_validate(array $data, string $source): void {
             if (!in_array($group, SIS_SETTINGS_GROUPS, true)) {
                 throw new sis_settings_error("$source: $section: unknown key '$group' (expected core or plugins)");
             }
-            if (!is_array($values)) {
+            if (!is_array($values) || ($values !== [] && array_is_list($values))) {
                 throw new sis_settings_error("$source: $section.$group must be an object");
             }
             if ($group === 'core') {
@@ -54,7 +54,7 @@ function sis_settings_validate(array $data, string $source): void {
                 if (!preg_match('/^[a-z][a-z0-9]*_[a-z0-9_]+$/', (string)$component)) {
                     throw new sis_settings_error("$source: $section.plugins: invalid component '$component'");
                 }
-                if (!is_array($leaves)) {
+                if (!is_array($leaves) || ($leaves !== [] && array_is_list($leaves))) {
                     throw new sis_settings_error("$source: $section.plugins.$component must be an object");
                 }
                 sis_settings_validate_leaves($leaves, "$source: $section.plugins.$component");
@@ -65,7 +65,7 @@ function sis_settings_validate(array $data, string $source): void {
 
 function sis_settings_validate_leaves(array $leaves, string $where): void {
     foreach ($leaves as $key => $value) {
-        if (!preg_match('/^[A-Za-z0-9_]+$/', (string)$key)) {
+        if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string)$key)) {
             throw new sis_settings_error("$where: invalid key '$key'");
         }
         if (!is_scalar($value)) {
