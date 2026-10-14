@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "91e858c5d27311e0d8bb40d2e0d877aa",
+    "content-hash": "fc826ff2e892fe93ba52593b1bac8a94",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -1090,38 +1090,6 @@
                 "source": "https://github.com/mtibben/html2text/tree/4.3.2"
             },
             "time": "2024-08-20T02:43:29+00:00"
-        },
-        {
-            "name": "jonof/moodle-block_completion_progress",
-            "version": "v2026101200",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/jonof/moodle-block_completion_progress.git",
-                "reference": "3c451fe624cb3f6e239ae6e0daad4176a33f8510"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/jonof/moodle-block_completion_progress/zipball/3c451fe624cb3f6e239ae6e0daad4176a33f8510",
-                "reference": "3c451fe624cb3f6e239ae6e0daad4176a33f8510",
-                "shasum": ""
-            },
-            "require": {
-                "composer/installers": "*"
-            },
-            "type": "moodle-block",
-            "extra": {
-                "installer-name": "completion_progress"
-            },
-            "license": [
-                "GPL-3.0+"
-            ],
-            "description": "Moodle plugin for student time management.",
-            "homepage": "https://github.com/jonof/moodle-block_completion_progress",
-            "support": {
-                "issues": "https://github.com/jonof/moodle-block_completion_progress/issues",
-                "source": "https://github.com/jonof/moodle-block_completion_progress"
-            },
-            "time": "2026-10-11T23:05:57+00:00"
         },
         {
             "name": "justinhunt/moodle-tiny_snippet",

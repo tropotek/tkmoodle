@@ -6,7 +6,6 @@
     "require": {
         "catalyst/moodle-tool_objectfs": "2026041012",
         "h5p/moodle-mod_hvp": "2026081300",
-        "jonof/moodle-block_completion_progress": "2026101200",
         "justinhunt/moodle-tiny_snippet": "2026042000",
         "lsuonline/moodle-block_quickmail": "2025102302",
         "mediamaisteri/moodle-tiny_fontsize": "2025062900",
@@ -20,11 +19,6 @@
         "ucla/moodle-mod_zoom": "5.5.1"
     },
     "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/jonof/moodle-block_completion_progress.git",
-            "no-api": true
-        },
         {
             "type": "vcs",
             "url": "https://github.com/jpahullo/moodle-tool_mergeusers.git",
