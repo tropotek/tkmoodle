@@ -20,7 +20,10 @@ CI builds every folder not starting with `_`.
   `git -C moodle/public/<path> submodule update --init --recursive`.
 - Keep the `config` block as it is: `composer/installers` must stay disabled or it
   installs plugins outside `moodle/public`.
-- Re-lock after any change: `bin/composer <name> update --no-install`.
+- `bin/plugin <name> add|bump|remove ...` writes inline entries for you: it reads
+  the plugin's `version.php` at the ref, sets `version` and `reference`, and
+  re-locks. A stopgap until Moodle's own Composer repository carries the plugins.
+- Re-lock after any hand edit: `bin/composer <name> update --no-install`.
 
 ## settings.json
 

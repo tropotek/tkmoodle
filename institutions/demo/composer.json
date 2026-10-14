@@ -4,8 +4,6 @@
     "type": "project",
     "license": "GPL-3.0-or-later",
     "require": {
-        "moodle/composer-installer": "^1.2",
-        "moodle/moodle": "5.3.0",
         "catalyst/moodle-tool_objectfs": "2026041012",
         "h5p/moodle-mod_hvp": "2026081300",
         "jonof/moodle-block_completion_progress": "2026101200",
@@ -13,6 +11,8 @@
         "lsuonline/moodle-block_quickmail": "2025102302",
         "mediamaisteri/moodle-tiny_fontsize": "2025062900",
         "moodle-an-hochschulen/moodle-theme_boost_union": "2026042014",
+        "moodle/composer-installer": "^1.2",
+        "moodle/moodle": "5.3.0",
         "moodleou/moodle-report_customsql": "2026021600",
         "moodleou/moodle-report_editdates": "2025072300",
         "ndunand/moodle-tool_mergeusers": "2026081302",
@@ -109,16 +109,6 @@
                     }
                 },
                 {
-                    "name": "moodle-an-hochschulen/moodle-theme_boost_union",
-                    "version": "2026042014",
-                    "type": "moodle-theme",
-                    "source": {
-                        "type": "git",
-                        "url": "https://github.com/moodle-an-hochschulen/moodle-theme_boost_union.git",
-                        "reference": "c8fbb2e9f2ba3976e3bfb1d2266125f3727b2e0a"
-                    }
-                },
-                {
                     "name": "catalyst/moodle-tool_objectfs",
                     "version": "2026041012",
                     "type": "moodle-tool",
@@ -126,6 +116,16 @@
                         "type": "git",
                         "url": "https://github.com/catalyst/moodle-tool_objectfs.git",
                         "reference": "e2ac620651c5ecdec003f1133a3a38e87195d4c9"
+                    }
+                },
+                {
+                    "name": "moodle-an-hochschulen/moodle-theme_boost_union",
+                    "version": "2026042014",
+                    "type": "moodle-theme",
+                    "source": {
+                        "type": "git",
+                        "url": "https://github.com/moodle-an-hochschulen/moodle-theme_boost_union.git",
+                        "reference": "c8fbb2e9f2ba3976e3bfb1d2266125f3727b2e0a"
                     }
                 }
             ]

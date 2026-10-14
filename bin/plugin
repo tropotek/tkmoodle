@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Manage an institution's inline plugin entries: plugins whose repository has no
+# composer.json of its own, declared as a "package" in the institution's composer.json.
+# A stopgap until Moodle's own Composer repository carries the plugins we use.
+#   bin/plugin <institution> add <git-url> <ref>       add a plugin at a tag, branch or commit
+#   bin/plugin <institution> bump <component> <ref>    move a plugin to another ref
+#   bin/plugin <institution> remove <component>        drop a plugin
+# Each re-locks the institution. Review the diff and commit it like any other change.
+# shellcheck disable=SC2016  # $n, $v ... in single quotes are jq variables
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+usage() { sed -n '5,7p' "$0" | sed 's/^# //' >&2; exit 64; }
+fail() { echo "plugin: $*" >&2; exit 1; }
+
+[[ $# -ge 3 ]] || usage
+inst="$1" cmd="$2"
+shift 2
+json="institutions/$inst/composer.json"
+[[ -f "$json" ]] || fail "no $json"
+
+image="${SIS_BASE_IMAGE:-moodle:dev}"
+docker image inspect "$image" >/dev/null 2>&1 || docker build --target dev -t "$image" .
+
+# Prints "<commit> <component> <version>" for a plugin repo at a ref, read from its
+# version.php inside the base image.
+read_plugin() {
+  docker run --rm -i --entrypoint sh "$image" -s "$1" "$2" <<'SH'
+set -eu
+url="$1" ref="$2" dir=$(mktemp -d)
+git -C "$dir" init -q
+git -C "$dir" fetch -q --depth 1 "$url" "$ref" 2>/dev/null || { echo "plugin: ref '$ref' not found in $url" >&2; exit 1; }
+git -C "$dir" checkout -q FETCH_HEAD
+[ -f "$dir/version.php" ] || { echo "plugin: no version.php at $ref" >&2; exit 1; }
+printf '%s ' "$(git -C "$dir" rev-parse HEAD)"
+php -r '
+define("MOODLE_INTERNAL", 1); define("ANY_VERSION", "any");
+foreach (["MATURITY_ALPHA" => 50, "MATURITY_BETA" => 100, "MATURITY_RC" => 150, "MATURITY_STABLE" => 200] as $k => $v) define($k, $v);
+$plugin = new stdClass();
+include $argv[1];
+echo $plugin->component, " ", $plugin->version, "\n";' "$dir/version.php"
+SH
+}
+
+# The inline entry's package name for a component, or nothing.
+entry_for() {
+  jq -r --arg c "$1" '.repositories[]? | select(.type == "package") | .package[]
+    | select(.name | endswith("/moodle-" + $c)) | .name' "$json"
+}
+
+edit_json() {  # edit_json <jq filter> [jq args...]
+  local filter="$1" tmp
+  shift
+  tmp=$(mktemp)
+  jq --indent 4 "$@" "$filter" "$json" > "$tmp" && mv "$tmp" "$json"
+}
+
+case "$cmd" in
+  add)
+    [[ $# -eq 2 ]] || usage
+    url="$1" ref="$2"
+    read -r sha component version < <(read_plugin "$url" "$ref") || exit 1
+    [[ -z "$(entry_for "$component")" ]] || fail "$component is already in $json; use bump"
+    owner=$(sed -E 's#^https://github\.com/([^/]+)/.*#\1#' <<<"$url" | tr '[:upper:]' '[:lower:]')
+    name="$owner/moodle-$component"
+    edit_json '
+      (if any(.repositories[]; .type == "package") then . else .repositories += [{"type": "package", "package": []}] end)
+      | (.repositories[] | select(.type == "package") | .package) += [{
+          "name": $n, "version": $v, "type": ("moodle-" + ($c | split("_")[0])),
+          "source": {"type": "git", "url": $u, "reference": $s}}]' \
+      --arg n "$name" --arg v "$version" --arg c "$component" --arg u "$url" --arg s "$sha"
+    bin/composer "$inst" require --no-update "$name:$version"
+    bin/composer "$inst" update "$name" --no-install
+    echo "plugin: added $component $version ($sha)"
+    ;;
+  bump)
+    [[ $# -eq 2 ]] || usage
+    component="$1" ref="$2"
+    name=$(entry_for "$component")
+    [[ -n "$name" ]] || fail "$component has no inline entry in $json"
+    url=$(jq -r --arg n "$name" '.repositories[] | select(.type == "package") | .package[] | select(.name == $n) | .source.url' "$json")
+    read -r sha found version < <(read_plugin "$url" "$ref") || exit 1
+    [[ "$found" == "$component" ]] || fail "$url at $ref is $found, not $component"
+    edit_json '(.repositories[] | select(.type == "package") | .package[] | select(.name == $n))
+      |= (.version = $v | .source.reference = $s)' --arg n "$name" --arg v "$version" --arg s "$sha"
+    bin/composer "$inst" require --no-update "$name:$version"
+    bin/composer "$inst" update "$name" --no-install
+    echo "plugin: $component now $version ($sha)"
+    ;;
+  remove)
+    [[ $# -eq 1 ]] || usage
+    component="$1"
+    name=$(entry_for "$component")
+    [[ -n "$name" ]] || fail "$component has no inline entry in $json"
+    edit_json '(.repositories[] | select(.type == "package") | .package) |= map(select(.name != $n))' --arg n "$name"
+    bin/composer "$inst" remove "$name" --no-install
+    echo "plugin: removed $component"
+    ;;
+  *)
+    usage
+    ;;
+esac
