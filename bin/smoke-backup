@@ -25,7 +25,50 @@ work="$(mktemp -d)"
 mkdir "$work/config" "$work/backups"
 files=(-f "$work/compose.yml")
 db_host=db db_name=moodle db_user=moodle db_pass=smoke
-cp host/compose.yml "$work/"
+
+# Removes the bundled db service, app's depends_on and the db volume, as the docs tell an
+# external-database host to.
+strip_bundled_db() {
+  awk '
+    /^services:/ { sec = "services" }
+    /^volumes:/  { sec = "volumes" }
+    sec == "services" && /^  [a-z]+:$/ { svc = $1 }
+    sec == "services" && svc == "db:" { next }
+    sec == "volumes" && /^  db:$/ { next }
+    svc == "app:" && /^    depends_on:$/ { skipdep = 1; next }
+    skipdep && /^      / { next }
+    { skipdep = 0; print }
+  '
+}
+
+if [[ -n "$ext" ]]; then
+  ext_root=$(docker exec "$ext" printenv MYSQL_ROOT_PASSWORD)
+  ext_net=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$ext" | head -n1)
+  ext_sql() { docker exec -i -e MYSQL_PWD="$ext_root" "$ext" mysql -uroot; }
+  db_host=$ext db_name=smokebk db_user=smokebk db_pass="smoke-$RANDOM$RANDOM"
+  ext_fresh_db() {
+    ext_sql <<SQL
+DROP DATABASE IF EXISTS smokebk;
+CREATE DATABASE smokebk CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP USER IF EXISTS 'smokebk'@'%';
+CREATE USER 'smokebk'@'%' IDENTIFIED BY '$db_pass';
+GRANT ALL ON smokebk.* TO 'smokebk'@'%';
+SQL
+  }
+  ext_fresh_db
+  strip_bundled_db < host/compose.yml > "$work/compose.yml"
+  cat > "$work/compose.external.yml" <<EOF
+services:
+  app: { networks: [default, extdb] }
+  cron: { networks: [default, extdb] }
+  dbtools: { networks: [default, extdb] }
+networks:
+  extdb: { external: true, name: $ext_net }
+EOF
+  files+=(-f "$work/compose.external.yml")
+else
+  cp host/compose.yml "$work/"
+fi
 
 cat > "$work/.env" <<EOF
 INSTITUTION=$inst
@@ -48,6 +91,13 @@ cleanup() {
     return
   fi
   dc down -v --remove-orphans >/dev/null 2>&1 || true
+  if [[ -n "$ext" ]]; then
+    ext_sql <<<"DROP DATABASE IF EXISTS smokebk; DROP USER IF EXISTS 'smokebk'@'%';" || true
+  fi
+  if [[ -n "${outside:-}" ]]; then
+    docker run --rm -v "$outside:/o" mysql:8.4 sh -c "rm -rf /o/* /o/.[!.]*; chown $(id -u):$(id -g) /o" >/dev/null 2>&1 || true
+    rmdir "$outside" 2>/dev/null || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -87,6 +137,10 @@ refused() {
 
 # ---- a running, seeded site -------------------------------------------------------
 start_site
+if [[ -n "$ext" ]]; then
+  ! dc config --services | grep -qx db || fail "compose still has a db service"
+  pass "running against external database in container $ext"
+fi
 [[ "$(sql "SELECT value FROM mdl_config WHERE name = 'sis_release'")" == "$rel" ]] || fail "sis_release not recorded"
 [[ "$(sql "SELECT value FROM mdl_config WHERE name = 'sis_institution'")" == "$inst" ]] || fail "sis_institution not recorded"
 pass "site up, identity $inst $rel"
@@ -232,8 +286,7 @@ pass "damaged, missing and path-like backups refused"
 
 # ---- wipe and restore ---------------------------------------------------------------
 dc down -v
-start_db_only() { if [[ -z "$ext" ]]; then dc up -d --wait db; fi; }
-start_db_only
+if [[ -n "$ext" ]]; then ext_fresh_db; else dc up -d --wait db; fi
 tools sis-restore first
 dc up -d app
 wait_up
@@ -257,5 +310,13 @@ echo "restored site checks out\n";
 PHP
 tools test ! -e /moodledata/smoke-marker || fail "moodledata not replaced"
 pass "restored: same user, course and file; later changes gone; moodledata writable"
+
+# ---- a backup folder outside the project, owned by someone else ------------------
+outside="$(mktemp -d)"
+docker run --rm -v "$outside:/o" mysql:8.4 sh -c 'chown 4321:4321 /o && chmod 755 /o'
+echo "BACKUP_DIR=$outside" >> "$work/.env"
+tools sis-backup outside >/dev/null
+[[ "$(stat -c %u:%g "$outside/outside" "$outside/outside/manifest.env" | sort -u)" == 4321:4321 ]] || fail "outside backup not owned like its folder"
+pass "BACKUP_DIR outside the project works, owned like the folder"
 
 echo "smoke-backup: PASS"
