@@ -1,0 +1,21 @@
+{
+    "defaults": {
+        "core": {
+            "timezone": "Australia/Brisbane",
+            "country": "AU",
+            "theme": "boost_union"
+        },
+        "plugins": {
+            "local_sisexample": { "greeting": "Hello from demo" }
+        }
+    },
+    "locked": {
+        "core": {
+            "authpreventaccountcreation": true
+        },
+        "plugins": {
+            "local_sisexample": { "remoteurl": "${SISEXAMPLE_REMOTE_URL}" },
+            "tool_objectfs": { "s3_bucket": "${S3_BUCKET}" }
+        }
+    }
+}

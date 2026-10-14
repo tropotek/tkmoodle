@@ -1,0 +1,12 @@
+{
+    "defaults": {
+        "core": {
+            "timezone": "UTC"
+        },
+        "plugins": {}
+    },
+    "locked": {
+        "core": {},
+        "plugins": {}
+    }
+}
