@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1dfebdc2c114bddf508b9685e650912a",
+    "content-hash": "91e858c5d27311e0d8bb40d2e0d877aa",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2228,11 +2228,11 @@
         },
         {
             "name": "moodle-an-hochschulen/moodle-theme_boost_union",
-            "version": "2026042014",
+            "version": "2026042018",
             "source": {
                 "type": "git",
                 "url": "https://github.com/moodle-an-hochschulen/moodle-theme_boost_union.git",
-                "reference": "c8fbb2e9f2ba3976e3bfb1d2266125f3727b2e0a"
+                "reference": "1a1c05d0c441693e0cb27b468d14b38e6716a1ca"
             },
             "type": "moodle-theme"
         },
