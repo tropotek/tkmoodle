@@ -24,8 +24,9 @@ try {
     if ($siscmd === 'render') {
         $sisout = $argv[2] ?? '/sis/run/locked.php';
         $sisphp = sis_settings_render_locked(sis_settings_resolve($sisdata, 'locked', $sisgetenv));
-        file_put_contents("$sisout.tmp", $sisphp);
-        rename("$sisout.tmp", $sisout);
+        if (@file_put_contents("$sisout.tmp", $sisphp) === false || !@rename("$sisout.tmp", $sisout)) {
+            throw new sis_settings_error("cannot write $sisout");
+        }
         echo "sis-settings: wrote $sisout\n";
         exit(0);
     }

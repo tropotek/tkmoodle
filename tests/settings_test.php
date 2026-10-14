@@ -97,5 +97,6 @@ check('cli: invalid override exits 1', cli(['render', $out], ['SIS_OVERRIDE_SETT
 check('cli: no output written on error', !file_exists($out));
 check('cli: valid render exits 0', cli(['render', $out], ['SIS_INSTITUTION_SETTINGS' => tmpjson('{"locked":{"core":{"x":"1"}}}')]) === 0 && is_file($out));
 @unlink($out);
+check('cli: unwritable output exits 1', cli(['render', '/nonexistent-dir/locked.php']) === 1);
 
 exit($failures ? 1 : 0);
