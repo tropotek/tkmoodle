@@ -67,6 +67,7 @@ jobs:
           target: release
           platforms: linux/amd64
           push: true
+          build-args: SIS_RELEASE=${{ steps.ver.outputs.version }}
           tags: ${{ env.REGISTRY }}/moodle:${{ steps.ver.outputs.version }}
           cache-from: type=gha,scope=base
           cache-to: type=gha,scope=base,mode=max
@@ -116,7 +117,9 @@ jobs:
           file: institutions/Dockerfile
           platforms: linux/amd64
           push: true
-          build-args: BASE_IMAGE=${{ env.REGISTRY }}/moodle@${{ needs.base.outputs.digest }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/moodle@${{ needs.base.outputs.digest }}
+            SIS_INSTITUTION=${{ matrix.institution }}
           labels: org.opencontainers.image.source=https://github.com/tropotek/tkmoodle
           tags: |
             ${{ env.REGISTRY }}/moodle-${{ matrix.institution }}:${{ needs.base.outputs.version }}

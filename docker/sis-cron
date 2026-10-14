@@ -5,6 +5,9 @@
 set -eu
 
 echo "sis-cron: running"
+# Held until the container stops, so sis-restore can tell the site is running. Without
+# php.ini and with only mysqli loaded, the holder takes a third less memory.
+php -n -d extension=mysqli /sis/bin/sis-db.php hold cron &
 while true; do
     php /app/moodle/admin/cli/cron.php || echo "sis-cron: cron.php exited $?"
     sleep 60
