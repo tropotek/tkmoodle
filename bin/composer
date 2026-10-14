@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run Composer inside the base image, against the repo root or one institution, so
+# every lock is resolved by the PHP and extensions the image runs.
+# Usage: bin/composer [<institution>] <composer args...>
+#   bin/composer demo update --no-install      re-lock an institution
+#   bin/composer update moodle/moodle          bump core in the root lock
+# Set COMPOSER_AUTH='{"github-oauth":{"github.com":"<token>"}}' if GitHub rate-limits you.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+image="${SIS_BASE_IMAGE:-moodle:dev}"
+dir="."
+if [[ $# -gt 0 && -d "institutions/$1" ]]; then
+  dir="institutions/$1"
+  shift
+fi
+
+docker image inspect "$image" >/dev/null 2>&1 || docker build --target dev -t "$image" .
+
+tty=()
+[[ -t 0 && -t 1 ]] && tty=(-t)
+exec docker run --rm -i "${tty[@]}" \
+  -u "$(id -u):$(id -g)" \
+  -e COMPOSER_HOME=/tmp/composer \
+  ${COMPOSER_AUTH:+-e COMPOSER_AUTH} \
+  -v "$PWD/$dir":/work -w /work \
+  --entrypoint composer "$image" "$@"
