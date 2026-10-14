@@ -1,0 +1,56 @@
+site_name: tkmoodle
+site_description: Moodle shipped as images. CI builds a base image and one image per institution; a host runs it with a compose file and an .env.
+site_url: https://tropotek.github.io/tkmoodle/
+repo_url: https://github.com/tropotek/tkmoodle
+repo_name: tropotek/tkmoodle
+edit_uri: edit/main/docs/
+docs_dir: docs
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - Hosting:
+      - Server installation: installation.md
+      - Upgrading and recovery: upgrading.md
+      - Configuration: configuration.md
+  - Development:
+      - Development: development.md
+      - Institutions and plugins: institutions.md
+      - Releasing: releasing.md
+      - Plugin provisioning: provisioning.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn

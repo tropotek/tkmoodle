@@ -1,27 +1,10 @@
 # tkmoodle
 
-Moodle shipped as images. The repo builds a base image (FrankenPHP and Moodle
-core), then one image per institution with that institution's plugins
-installed by Composer. A host runs a published image with `host/compose.yml`
-and an `.env`. It never builds anything.
+Moodle shipped as images. CI builds a base image (FrankenPHP and Moodle core), then one image per
+institution with its plugins installed by Composer. A server runs an image with `host/compose.yml`
+and an `.env`, and never builds anything.
 
-| Path | What it is |
-|---|---|
-| `Dockerfile`, `composer.json` | the base image |
-| `docker/` | entrypoint, settings renderer, web and PHP config |
-| `plugins/` | internal plugins, baked into every image |
-| `institutions/<name>/` | one institution, data only: plugins (`composer.json`/lock) and `settings.json`; `_`-prefixed folders are templates |
-| `institutions/Dockerfile` | builds any institution on the base image |
-| `host/` | what a server needs to run an image |
-| `bin/` | `dev`, `smoke`, `composer`, `check-lock` |
+**Documentation: https://tropotek.github.io/tkmoodle/** (sources in `docs/`).
 
-## Local development
-
-    bin/dev up                      # base image on http://localhost:8300
-    INSTITUTION=demo bin/dev up     # an institution on the dev base
+    bin/dev up                      # local stack on http://localhost:8300
     bin/smoke demo                  # build, install, check, tear down
-
-## Releasing
-
-Tag `v<moodle>-<n>` (for example `v5.3.0-1`). CI publishes the base image, then
-every institution.

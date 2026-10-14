@@ -12,3 +12,6 @@
 vendor/
 *.log
 .DS_Store
+
+# MkDocs build output
+/site
