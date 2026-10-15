@@ -64,6 +64,28 @@ check "tar: skips sessions" not has ./sessions/x
 check "tar: skips the maintenance flag" not has ./climaintenance.html
 rm -rf "$md"
 
+# sis-preupgrade against a fake mysql: STUB_FAIL_ON makes the query containing it fail.
+stub=$(mktemp -d)
+cat > "$stub/mysql" <<'STUB'
+#!/usr/bin/env bash
+q=""
+while (($#)); do if [[ "$1" == -e ]]; then q=$2; shift; fi; shift; done
+if [[ -n "${STUB_FAIL_ON:-}" && "$q" == *"$STUB_FAIL_ON"* ]]; then echo "ERROR 1142: denied" >&2; exit 1; fi
+if [[ "$q" == "SHOW TABLES"* ]]; then echo mdl_config; fi
+exit 0
+STUB
+chmod +x "$stub/mysql"
+preupgrade() {
+  STUB_FAIL_ON=$1 SIS_RELEASE=0.0.0-2 DB_PASS=x PATH="$stub:$PATH" \
+    bash "$(dirname "$0")/../dbtools/sis-preupgrade" 2>&1
+}
+contains() { [[ "$1" == *"$2"* ]] || { echo "     got: $1"; return 1; }; }
+check "preupgrade: unreadable tables fail loudly" \
+  contains "$(preupgrade 'SHOW TABLES')" "pre-upgrade backup FAILED: cannot read database"
+check "preupgrade: unreadable release fails loudly" \
+  contains "$(preupgrade "name = 'sis_release'")" "pre-upgrade backup FAILED: cannot read sis_release"
+rm -rf "$stub"
+
 echo
 if ((failures)); then echo "$failures failed"; exit 1; fi
 echo "all passed"

@@ -29,8 +29,9 @@ until sis_sql -e 'SELECT 1' >/dev/null 2>&1; do
 done
 
 current=""
-if [[ -n "$(sis_sql -e "SHOW TABLES LIKE 'mdl\\_config'")" ]]; then
-  current=$(sis_config sis_release)
+tables=$(sis_sql -e "SHOW TABLES LIKE 'mdl\\_config'") || fail "cannot read database $DB_NAME"
+if [[ -n "$tables" ]]; then
+  current=$(sis_config sis_release) || fail "cannot read sis_release"
 fi
 if [[ -z "$current" ]]; then
   log "no recorded release: nothing to back up"

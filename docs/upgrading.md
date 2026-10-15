@@ -83,7 +83,8 @@ The log shows `sis: UPGRADE FAILED`, with Moodle's error just above it. The site
 maintenance mode and keeps serving the maintenance page, and `/up` answers 503.
 
 - If a newer release fixes the cause, set its `TAG` and run `pull` and `up -d` again. Every start
-  retries the upgrade.
+  retries the upgrade. That start takes another backup, of the half-upgraded database: to roll
+  back, use `pre-<the release that failed>`, not the newer one.
 - Otherwise, restore `pre-<the release that failed>` and set `TAG` back to the release it names
   (below).
 
@@ -93,7 +94,8 @@ Two other refusals stop the start:
   of that release.
 - `UPGRADE REFUSED` (in the `app` log): the app image is newer than the `dbtools` image that
   checked the backup, usually from an `APP_IMAGE`/`DBTOOLS_IMAGE` override or a pull that only
-  half finished. Run `docker compose pull` and start again.
+  half finished. Run `docker compose pull`, or make `DBTOOLS_IMAGE` match `APP_IMAGE`, and start
+  again.
 
 ## An incomplete first install
 
