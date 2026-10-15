@@ -32,7 +32,11 @@ sis_db_init
 wait=${DB_WAIT_TIMEOUT:-120}
 deadline=$((SECONDS + wait))
 until sis_sql -e 'SELECT 1' >/dev/null 2>&1; do
-  (( SECONDS < deadline )) || fail "database $DB_HOST not reachable after ${wait}s"
+  if (( SECONDS >= deadline )); then
+    hint=""
+    [[ "$DB_HOST" != db ]] || hint="; the bundled database runs only when .env sets COMPOSE_PROFILES=db"
+    fail "database $DB_HOST not reachable after ${wait}s$hint"
+  fi
   sleep 2
 done
 

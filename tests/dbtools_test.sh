@@ -89,6 +89,11 @@ refusal=$(SIS_ENV=bogus preupgrade 'S')
 lacks() { [[ "$1" != *"$2"* ]] || { echo "     got: $1"; return 1; }; }
 check "preupgrade: refuses a bad SIS_ENV" contains "$refusal" "SIS_ENV must be one of"
 check "preupgrade: refuses it before touching the database" lacks "$refusal" "FAILED"
+# An unreachable database: every query fails, and no wait.
+check "preupgrade: an unreachable bundled db names COMPOSE_PROFILES" \
+  contains "$(DB_WAIT_TIMEOUT=0 preupgrade 'S')" "the bundled database runs only when .env sets COMPOSE_PROFILES=db"
+check "preupgrade: an unreachable external db doesn't" \
+  lacks "$(DB_HOST=elsewhere DB_WAIT_TIMEOUT=0 preupgrade 'S')" "COMPOSE_PROFILES"
 rm -rf "$stub"
 
 # sis-host-check against a folder standing in for /sis/host.
