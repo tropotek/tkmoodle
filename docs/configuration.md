@@ -9,11 +9,14 @@ A site is configured in two places: the server's `.env`, for how the site runs, 
 |---|---|---|
 | `INSTITUTION` | `demo` | which institution image to run: `ghcr.io/tropotek/moodle-<INSTITUTION>` |
 | `TAG` | `latest` | which release of it. Pin one on a real site |
+| `SIS_ENV` | none (required) | `local`, `development`, `uat` or `production`; see [Environments](#environments). The site refuses to start without it |
 | `WWWROOT` | `http://localhost` | the site's address. `https://` also makes the web server fetch a certificate for its hostname |
 | `HTTP_PORT`, `HTTPS_PORT` | `80`, `443` | the ports published on the server |
 | `DB_HOST` | `db` | `db` is the bundled MySQL container; anything else is an external server |
 | `DB_PORT`, `DB_NAME`, `DB_USER` | `3306`, `moodle`, `moodle` | the database to use |
 | `DB_PASS` | none (required) | the database password; also creates the bundled database's user |
+| `SMTP_HOSTS`, `SMTP_USER`, `SMTP_PASS`, `SMTP_NOREPLY` | empty | outgoing mail: `host:port`, login, password, no-reply address (set it when `WWWROOT`'s host isn't a real domain, such as `localhost`: Moodle's default `noreply@<host>` is then rejected). Set, each is read-only in the admin pages; empty, the admin sets it there |
+| `REDIS_HOST` | empty | a Redis server for Moodle's sessions; see [Sessions](#sessions). Empty keeps them in moodledata |
 | `SITE_FULLNAME` | `Moodle` | the site name. First install only |
 | `ADMIN_PASS` | none (required for the first install) | the first admin's password. First install only |
 | `ADMIN_EMAIL` | `admin@example.com` | the first admin's email. First install only |
@@ -35,6 +38,27 @@ These have working defaults and are left out of `.env.example`:
 
 Fixed in the image: MySQL through `mysqli`, table prefix `mdl_`, data in `/moodledata`. Installing
 and updating plugins from Moodle's admin pages is turned off: plugins come only with an image.
+
+## Environments
+
+| `SIS_ENV` | Mail | curl (Moodle's outgoing requests) |
+|---|---|---|
+| `local` | sent, to whatever `SMTP_HOSTS` says (the dev stack's Mailpit) | any host and port |
+| `development` | never sent, whatever `SMTP_HOSTS` says | Moodle's defaults: no private hosts, ports 80 and 443 |
+| `uat`, `production` | sent | Moodle's defaults |
+
+`development` exists so a copy of production can't email real people. `--any-institution` on
+`sis-restore` works only on `local` and `development` ([Upgrading](upgrading.md#restore-and-roll-back)).
+
+## Sessions
+
+`REDIS_HOST` moves Moodle's sessions into Redis, port 6379. Nothing here runs Redis: point it at a
+server this host can reach.
+
+- Give each site its own Redis server, or its own database on one. Moodle's "kill all sessions"
+  deletes every session key in the Redis database, so sites that share one log each other out.
+- A wrong value shows as an error on every page, not in the boot log: install, upgrade and cron
+  never open a session, so the site boots and `/up` answers 200.
 
 ## Backups
 

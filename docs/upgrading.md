@@ -129,7 +129,7 @@ docker compose up -d
 |---|---|
 | `still running: app cron` / `other connection(s)` | the site is still up; stop it as above |
 | `newer than …; set TAG=…` | the backup is from a newer release than this host runs. Set that `TAG` in `.env`, `docker compose pull`, and run it again |
-| `from institution …` | the backup is from a different institution's site. Restoring it would drop the data of every plugin this image lacks |
+| `from institution …` | the backup is from a different institution's site. Restoring it would drop the data of every plugin this image lacks. On `local` and `development`, `sis-restore --any-institution <name>` restores it anyway |
 | `damaged` / `incomplete` | the backup files are cut short or missing |
 
 A backup from the same or an older release restores, and the next start upgrades it. To roll
