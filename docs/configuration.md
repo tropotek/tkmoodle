@@ -69,8 +69,8 @@ site, rather than running it with the wrong mail and restore rules.
 - The folder must be mode 755 and the marker 644: the site reads them as an ordinary user.
 - Nothing creates the folder or the marker. A server gets both when it is set up
   ([Installation](installation.md#install)).
-- The check is off until the `hostmarker` line in `compose.yml` is uncommented. With it
-  commented, nothing on the host is read and only `local` starts.
+- Until the `hostmarker` line in `compose.yml` is uncommented, nothing on the host is read, so
+  only `local` starts.
 - `app`, `cron`, the pre-upgrade backup and `sis-restore` check the marker. `sis-backup` doesn't,
   so a mis-marked host can still take a backup.
 
