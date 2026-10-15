@@ -76,7 +76,7 @@ exit 0
 STUB
 chmod +x "$stub/mysql"
 preupgrade() {
-  STUB_FAIL_ON=$1 SIS_RELEASE=0.0.0-2 DB_PASS=x PATH="$stub:$PATH" \
+  SIS_ENV=${SIS_ENV:-local} STUB_FAIL_ON=$1 SIS_RELEASE=0.0.0-2 DB_PASS=x PATH="$stub:$PATH" \
     bash "$(dirname "$0")/../dbtools/sis-preupgrade" 2>&1
 }
 contains() { [[ "$1" == *"$2"* ]] || { echo "     got: $1"; return 1; }; }
@@ -84,6 +84,8 @@ check "preupgrade: unreadable tables fail loudly" \
   contains "$(preupgrade 'SHOW TABLES')" "pre-upgrade backup FAILED: cannot read database"
 check "preupgrade: unreadable release fails loudly" \
   contains "$(preupgrade "name = 'sis_release'")" "pre-upgrade backup FAILED: cannot read sis_release"
+check "preupgrade: refuses a bad SIS_ENV before touching the database" \
+  contains "$(SIS_ENV=bogus preupgrade x)" "SIS_ENV must be one of"
 rm -rf "$stub"
 
 echo

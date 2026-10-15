@@ -75,6 +75,7 @@ fi
 
 cat > "$work/.env" <<EOF
 INSTITUTION=$inst
+SIS_ENV=local
 APP_IMAGE=moodle-$inst:smokebk
 DBTOOLS_IMAGE=moodle-dbtools:smokebk
 WWWROOT=http://localhost:$port

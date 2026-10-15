@@ -6,6 +6,12 @@ set -euo pipefail
 # shellcheck source=dbtools/sis-dbtools-lib.sh
 . "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
 
+# Checked before any backup, so a host missing it stops at once rather than after a dump.
+case "${SIS_ENV:-}" in
+  local|development|uat|production) ;;
+  *) die "SIS_ENV must be one of local, development, uat, production (got '${SIS_ENV:-}'); set it in .env and run docker compose up -d again" ;;
+esac
+
 target=$SIS_RELEASE
 name=pre-$target
 fail() {

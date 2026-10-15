@@ -5,6 +5,7 @@ name: moodle-dev
 
 x-env: &env
   WWWROOT: http://localhost:${DEV_PORT:-8300}
+  SIS_ENV: local
   DB_HOST: db
   DB_PASS: dev
   ADMIN_PASS: Dev-Admin-1
