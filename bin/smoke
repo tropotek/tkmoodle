@@ -1,181 +1,62 @@
 #!/usr/bin/env bash
-# Local smoke test: build the base (and optionally one institution on it), run it
-# with host/compose.yml and a throwaway database, check it serves, then tear down.
-# Usage: bin/smoke [<institution>]
-#   SMOKE_PORT=8399  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
-#   SMOKE_ENV='KEY=value'  extra .env lines
-#   SMOKE_IMAGE=<image>    use this app image instead of building
+# Docker smoke tests: build the images, run a throwaway site from host/compose.yml, check it,
+# then tear it down. The suites live in tests/smoke/.
+# Usage: bin/smoke [<suite>] [<institution>]
+#   install [<inst>]   install a fresh site and check it serves (the default; base image unless named)
+#   env                mail, curl, SMTP and Redis per SIS_ENV, with Mailpit and Redis beside it
+#   backup [<inst>]    back up a seeded site, check every refusal, restore it (default: demo)
+#   upgrade            the pre-upgrade backup through install, upgrades and a rollback
+#   all [<inst>]       the four in turn, stopping at the first failure; <inst> goes to install and backup
+# Every suite: SMOKE_PORT (its own default), SMOKE_TIMEOUT=600, SMOKE_KEEP=1 (leave it running;
+# not with all). install only: SMOKE_ENV='KEY=value' (extra .env lines), SMOKE_IMAGE=<image>.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-inst="${1:-}"
-port="${SMOKE_PORT:-8399}"
-timeout="${SMOKE_TIMEOUT:-600}"
-image="${SMOKE_IMAGE:-}"
-
-if [[ -z "$image" ]]; then
-  docker build -t moodle:smoke .
-  image=moodle:smoke
-  if [[ -n "$inst" ]]; then
-    [[ -d "institutions/$inst" ]] || { echo "smoke: no institutions/$inst" >&2; exit 64; }
-    docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smoke --build-arg SIS_INSTITUTION="$inst" -t "moodle-$inst:smoke" "institutions/$inst"
-    image="moodle-$inst:smoke"
-  fi
-fi
-docker build -t moodle-dbtools:smoke dbtools
-
-work="$(mktemp -d)"
-cp host/compose.yml "$work/"
-mkdir "$work/config" "$work/backups"
-cat > "$work/.env" <<EOF
-APP_IMAGE=$image
-DBTOOLS_IMAGE=moodle-dbtools:smoke
-SIS_ENV=local
-WWWROOT=http://localhost:$port
-HTTP_PORT=$port
-HTTPS_PORT=$((port + 1))
-DB_PASS=smoke
-ADMIN_PASS=Smoke-Test-1
-${SMOKE_ENV:-}
-EOF
-
-dc() { docker compose -p smoke --project-directory "$work" "$@"; }
-cleanup() {
-  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
-    echo "smoke: left running; stop with: docker compose -p smoke --project-directory $work down -v"
-  else
-    dc down -v --remove-orphans >/dev/null 2>&1 || true
-    docker compose -p smokehost --project-directory "$work/hostcheck" down -v >/dev/null 2>&1 || true
-    chmod -R u+rwx "$work" 2>/dev/null || true; rm -rf "$work"
-  fi
-}
-trap cleanup EXIT
-
-fail() { echo "smoke: FAIL $*" >&2; dc logs --tail 60 app >&2 || true; exit 1; }
-
-# SIS_ENV is checked before anything else, in the app image and in preupgrade.
-for value in "" bogus Production; do
-  if out=$(docker run --rm -e SIS_ENV="$value" "$image" true 2>&1); then fail "SIS_ENV='$value' was accepted"; fi
-  [[ "$out" == *"SIS_ENV must be one of local, development, uat, production (got '$value')"* ]] || fail "SIS_ENV='$value': $out"
-done
-docker run --rm -e SIS_ENV=local "$image" true >/dev/null || fail "SIS_ENV=local was refused"
-if out=$(docker run --rm -e SIS_ENV=bogus moodle-dbtools:smoke sis-preupgrade 2>&1); then fail "preupgrade accepted SIS_ENV=bogus"; fi
-[[ "$out" == *"SIS_ENV must be one of"* ]] || fail "preupgrade: $out"
-echo "smoke: SIS_ENV is checked"
-
-# Host markers: each case mounts a folder at /sis/host, as the hostmarker volume does.
-hm="$work/hm"
-marks() { rm -rf "$hm"; mkdir "$hm"; local m; for m in "$@"; do touch "$hm/$m"; done; }
-in_host() { local env=$1; shift; docker run --rm -e SIS_ENV="$env" -v "$hm:/sis/host:ro" "$@" 2>&1; }
-refused_by() {  # refused_by <text> <SIS_ENV> <docker run args…>
-  local want=$1 out
-  shift
-  if out=$(in_host "$@"); then fail "not refused: $*"; fi
-  [[ "$out" == *"$want"* ]] || fail "refusal of '$*' lacks '$want'; got: $out"
-}
-wrong="SIS_ENV=production expects /etc/tkmoodle/production, but this host is marked /etc/tkmoodle/uat"
-marks uat
-refused_by "$wrong" production "$image" true
-marks
-refused_by "has no environment marker" production "$image" true
-marks uat production
-refused_by "has more than one environment marker" production "$image" true
-marks
-mkdir "$hm/uat"
-refused_by "/etc/tkmoodle/uat is not a regular file" uat "$image" true
-marks uat
-refused_by "$wrong" production -e SKIP_PREUPGRADE_BACKUP=1 moodle-dbtools:smoke sis-preupgrade
-refused_by "$wrong" production moodle-dbtools:smoke sis-restore first
-refused_by "SIS_ENV must be one of" bogus moodle-dbtools:smoke sis-restore first
-marks production
-refused_by "SIS_ENV=local, but this host is marked as a server" local "$image" true
-chmod 000 "$hm"
-refused_by "is not readable by the site" production "$image" true
-chmod 755 "$hm"
-marks devserver
-in_host development "$image" true >/dev/null || fail "app refused development on a devserver host"
-in_host development -e SKIP_PREUPGRADE_BACKUP=1 moodle-dbtools:smoke sis-preupgrade >/dev/null \
-  || fail "preupgrade refused development on a devserver host"
-rc=0
-in_host development moodle-dbtools:smoke sis-restore >/dev/null || rc=$?
-[[ "$rc" == 64 ]] || fail "sis-restore did not reach its usage check on a devserver host (exit $rc)"
-echo "smoke: host markers are checked in both images"
-
-# The documented switch: uncomment the hostmarker line, here pointed at a test folder. Its own
-# project, so the main run's plain volume is never reused.
-hw="$work/hostcheck"
-mkdir -p "$hw/config" "$hw/backups"
-cp "$work/.env" "$hw/"
-sed -e 's|^    # driver_opts:|    driver_opts:|' -e "s|device: /etc/tkmoodle}|device: $hw/marker}|" \
-  host/compose.yml > "$hw/compose.yml"
-grep -qF "    driver_opts: {type: none, o: bind, device: $hw/marker}" "$hw/compose.yml" \
-  || fail "the documented hostmarker edit did not apply to host/compose.yml"
-hdc() { docker compose -p smokehost --project-directory "$hw" "$@"; }
-mkdir "$hw/marker"
-touch "$hw/marker/production"
-out=$(hdc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1) \
-  || fail "with the hostmarker line uncommented, a production host marked production was refused: $out"
-hdc down -v >/dev/null 2>&1 || true
-rm -rf "$hw/marker"
-if out=$(hdc run --rm --no-deps -T app true 2>&1); then fail "started with the marker folder missing"; fi
-[[ "$out" == *"no such file or directory"* ]] || fail "missing marker folder: $out"
-hdc down -v >/dev/null 2>&1 || true
-echo "smoke: the hostmarker line binds the host folder, and a missing one stops the site"
-
-# Unedited compose.yml: the hostmarker volume is empty, so only local starts.
-if out=$(dc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1); then
-  fail "production started with the hostmarker line commented"
-fi
-[[ "$out" == *"has no environment marker"* ]] || fail "unedited compose.yml, production: $out"
-echo "smoke: an unedited compose.yml refuses a server SIS_ENV"
-
-dc up -d db app
-deadline=$((SECONDS + timeout))
-until curl -fsS -o /dev/null "http://localhost:$port/up"; do
-  (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
-  [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
-  sleep 5
-done
-echo "smoke: /up 200"
-
-code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/login/index.php")
-[[ "$code" == 200 ]] || fail "login page returned $code"
-echo "smoke: login page 200"
-
-[[ "$(dc ps -a --format '{{.ExitCode}}' preupgrade)" == 0 ]] || fail "preupgrade did not exit 0"
-[[ "$(dc logs --no-log-prefix preupgrade)" == *"no recorded release: nothing to back up"* ]] || fail "preupgrade: $(dc logs preupgrade)"
-echo "smoke: preupgrade passed a first install through"
-
-dc up -d cron
-sleep 15
-[[ "$(dc ps -a --format '{{.State}}' cron)" == running ]] || fail "cron not running"
-[[ "$(dc logs cron)" == *"sis-cron: running"* ]] || fail "cron did not start"
-echo "smoke: cron running"
-
-mysql_smoke() { dc exec -T db mysql -umoodle -psmoke -N moodle -e "$1" 2>/dev/null; }
-
-want_inst="${inst:-base}"
-release=$(mysql_smoke "select value from mdl_config where name='sis_release'")
-institution=$(mysql_smoke "select value from mdl_config where name='sis_institution'")
-if [[ -n "${SMOKE_IMAGE:-}" ]]; then
-  [[ -n "$release" && -n "$institution" ]] || fail "identity not recorded: release='$release' institution='$institution'"
-else
-  [[ "$release" == dev ]] || fail "sis_release is '$release', expected dev"
-  [[ "$institution" == "$want_inst" ]] || fail "sis_institution is '$institution', expected $want_inst"
-fi
-echo "smoke: identity $institution $release"
-
-for role in app cron; do
-  held=$(mysql_smoke "select IS_USED_LOCK(LEFT(CONCAT('sis:', DATABASE(), ':$role'), 64)) is not null")
-  [[ "$held" == 1 ]] || fail "$role does not hold its running lock"
-done
-echo "smoke: app and cron hold their locks"
-
-if [[ -n "$inst" ]]; then
-  for component in $(jq -r '.locked.plugins // {} | keys[]' "institutions/$inst/settings.json"); do
-    n=$(mysql_smoke "select count(*) from mdl_config_plugins where plugin='$component' and name='version'")
-    [[ "$n" -ge 1 ]] || fail "$component is not installed"
-    echo "smoke: $component installed"
+suites=(install env backup upgrade)
+usage() {
+  local d names=""
+  for d in institutions/*/; do
+    d=$(basename "$d")
+    [[ "$d" == _* ]] || names+=" $d"
   done
+  # By its path from the repo root: $0 may be relative to where it was started.
+  sed -n '4,11p' bin/smoke | sed 's/^# //' >&2
+  echo "institutions:$names" >&2
+  exit 64
+}
+is_suite() {
+  local s
+  for s in "${suites[@]}" all; do [[ "$1" == "$s" ]] && return 0; done
+  return 1
+}
+
+for s in "${suites[@]}" all; do
+  if [[ -d "institutions/$s" ]]; then
+    echo "smoke: institutions/$s is named like a suite; rename it" >&2
+    exit 64
+  fi
+done
+
+suite=install
+if [[ $# -gt 0 ]] && is_suite "$1"; then suite=$1; shift; fi
+[[ $# -le 1 ]] || usage
+inst=${1:-}
+if [[ -n "$inst" ]]; then
+  [[ "$inst" != _* && -d "institutions/$inst" ]] || usage
+  [[ "$suite" != env && "$suite" != upgrade ]] || usage
 fi
-echo "smoke: PASS"
+
+if [[ "$suite" != all ]]; then
+  exec bash "tests/smoke/$suite.sh" ${inst:+"$inst"}
+fi
+if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
+  echo "smoke: SMOKE_KEEP=1 can't be used with all: a kept stack holds the ports the next suite needs" >&2
+  exit 64
+fi
+for s in "${suites[@]}"; do
+  case "$s" in
+    install|backup) bash "tests/smoke/$s.sh" ${inst:+"$inst"} ;;
+    *) bash "tests/smoke/$s.sh" ;;
+  esac
+done
+echo "smoke: all suites passed"

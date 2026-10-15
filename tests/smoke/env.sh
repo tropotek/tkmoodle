@@ -1,83 +1,32 @@
 #!/usr/bin/env bash
-# SIS_ENV smoke test. Runs the base image from host/compose.yml with Mailpit and Redis
-# beside it, then checks that local mails and reaches any port, development never mails,
-# production blocks private hosts, SMTP_* locks the SMTP settings, and REDIS_HOST moves
-# sessions into Redis. Tears everything down afterwards.
-# Usage: bin/smoke-env      SMOKE_PORT=8393  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
-set -euo pipefail
-cd "$(dirname "$0")/.."
+# env suite: run the base image from host/compose.yml with Mailpit and Redis beside it, then
+# check that local mails and reaches any port, development never mails, production blocks
+# private hosts, SMTP_* locks the SMTP settings, and REDIS_HOST moves sessions into Redis.
+# Run it through bin/smoke.
+SUITE=smoke-env PROJECT=smokeenv DEFAULT_PORT=8393
+# shellcheck source=tests/smoke/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-port="${SMOKE_PORT:-8393}"
+smoke_build_base moodle:smokeenv
+smoke_build_dbtools moodle-dbtools:smokeenv
+
+smoke_init
 mailport=$((port + 2))
-timeout="${SMOKE_TIMEOUT:-600}"
-
-docker build -q -t moodle:smokeenv . >/dev/null
-docker build -q -t moodle-dbtools:smokeenv dbtools >/dev/null
-
-work="$(mktemp -d)"
-mkdir "$work/config" "$work/backups"
-mkdir "$work/hostmarker"
-cp host/compose.yml "$work/"
-cat > "$work/compose.test.yml" <<EOF
+cat > "$work/compose.test.yml" <<YML
 services:
   mailpit:
     image: axllent/mailpit:v1.21.8
     ports: ["$mailport:8025"]
   redis:
     image: redis:7.4.1-alpine
-volumes:
-  hostmarker:
-    driver_opts: {type: none, o: bind, device: $work/hostmarker}
-EOF
-cat > "$work/.env" <<EOF
-INSTITUTION=base
-APP_IMAGE=moodle:smokeenv
-DBTOOLS_IMAGE=moodle-dbtools:smokeenv
-SIS_ENV=local
-WWWROOT=http://localhost:$port
-HTTP_PORT=$port
-HTTPS_PORT=$((port + 1))
-DB_PASS=smoke
-ADMIN_PASS=Smoke-Test-1
-SMTP_HOSTS=mailpit:1025
-# Moodle's default no-reply address, noreply@localhost here, is not a valid address.
-SMTP_NOREPLY=noreply@example.com
-REDIS_HOST=redis
-EOF
+YML
+smoke_compose "$work/compose.test.yml"
+smoke_bind_hostmarker
+smoke_env INSTITUTION=base APP_IMAGE=moodle:smokeenv DBTOOLS_IMAGE=moodle-dbtools:smokeenv \
+  SMTP_HOSTS=mailpit:1025 \
+  "# Moodle's default no-reply address, noreply@localhost here, is not a valid address." \
+  SMTP_NOREPLY=noreply@example.com REDIS_HOST=redis
 
-dc() { docker compose -p smokeenv --project-directory "$work" -f "$work/compose.yml" -f "$work/compose.test.yml" "$@"; }
-cleanup() {
-  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
-    echo "smoke-env: left running in $work"
-    return
-  fi
-  dc down -v --remove-orphans >/dev/null 2>&1 || true
-  rm -rf "$work"
-}
-trap cleanup EXIT
-
-fail() { echo "smoke-env: FAIL $*" >&2; dc logs --tail 30 app >&2 || true; exit 1; }
-pass() { echo "smoke-env: ok   $*"; }
-
-wait_up() {
-  local deadline=$((SECONDS + timeout))
-  until curl -fsS -o /dev/null "http://localhost:$port/up"; do
-    (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
-    [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
-    sleep 5
-  done
-}
-# setenv <key> [<value>]: set a .env line, or remove it when no value is given; then
-# recreate app with it.
-setenv() {
-  sed -i "/^$1=/d" "$work/.env"
-  if [[ $# -gt 1 ]]; then echo "$1=$2" >> "$work/.env"; fi
-  dc up -d app >/dev/null
-  wait_up
-}
-# marker [<name>]: leave only that marker in the host folder (none when no name is given).
-marker() { rm -f "$work/hostmarker"/*; if [[ $# -gt 0 ]]; then touch "$work/hostmarker/$1"; fi; }
-moodle_php() { dc exec -T app php; }
 mail_count() { curl -fsS "http://localhost:$mailport/api/v1/messages" | jq -r .total; }
 send_mail() {
   moodle_php <<'PHP'
@@ -119,14 +68,14 @@ pass "local: mail reaches Mailpit, curl reaches any host and port"
 
 # ---- development ----------------------------------------------------------------------
 marker devserver
-setenv SIS_ENV development
+setenv_up SIS_ENV development
 send_mail
 [[ "$(mail_count)" == 1 ]] || fail "development sent mail ($(mail_count))"
 pass "development: no mail sent"
 
 # ---- production -------------------------------------------------------------------------
 marker production
-setenv SIS_ENV production
+setenv_up SIS_ENV production
 [[ "$(curl_mailpit)" == blocked ]] || fail "production: curl reached a private host and port"
 [[ "$(smtp_forced)" == forced ]] || fail "production: SMTP_HOSTS set but smtphosts not forced"
 pass "production: curl blocks private hosts; SMTP from .env is read-only"
@@ -151,7 +100,7 @@ wait_up
 pass "a login survives an app restart"
 
 # ---- no SMTP_HOSTS ----------------------------------------------------------------------
-setenv SMTP_HOSTS
+setenv_up SMTP_HOSTS
 [[ "$(smtp_forced)" == free ]] || fail "smtphosts still forced with SMTP_HOSTS empty"
 pass "without SMTP_HOSTS the admin sets SMTP"
 

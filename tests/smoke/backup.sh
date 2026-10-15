@@ -1,98 +1,33 @@
 #!/usr/bin/env bash
-# Backup and restore smoke test. Builds the base, one institution and dbtools with a test
-# release, runs a throwaway site from host/compose.yml, then backs it up, restores it and
-# checks every refusal. Tears everything down afterwards.
-# Usage: bin/smoke-backup [<institution>]     (default: demo)
-#   SMOKE_PORT=8398  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
-set -euo pipefail
-cd "$(dirname "$0")/.."
+# backup suite: build the base, one institution and dbtools with a test release, run a
+# throwaway site from host/compose.yml, then back it up, restore it and check every refusal.
+# Run it through bin/smoke.
+SUITE=smoke-backup PROJECT=smokebk DEFAULT_PORT=8398
+# shellcheck source=tests/smoke/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 inst="${1:-demo}"
-port="${SMOKE_PORT:-8398}"
-timeout="${SMOKE_TIMEOUT:-600}"
 rel=0.0.0-1
-[[ -d "institutions/$inst" ]] || { echo "smoke-backup: no institutions/$inst" >&2; exit 64; }
+smoke_build_base moodle:smokebk "$rel"
+smoke_build_institution "$inst" moodle:smokebk "moodle-$inst:smokebk"
+smoke_build_dbtools moodle-dbtools:smokebk "$rel"
 
-docker build --build-arg SIS_RELEASE=$rel -t moodle:smokebk .
-docker build -f institutions/Dockerfile --build-arg BASE_IMAGE=moodle:smokebk \
-  --build-arg SIS_INSTITUTION="$inst" -t "moodle-$inst:smokebk" "institutions/$inst"
-docker build --build-arg SIS_RELEASE=$rel -t moodle-dbtools:smokebk dbtools
-
-work="$(mktemp -d)"
-mkdir "$work/config" "$work/backups"
-files=(-f "$work/compose.yml")
-
-cp host/compose.yml "$work/"
-mkdir "$work/hostmarker"
-cat > "$work/compose.hostmarker.yml" <<EOF
-volumes:
-  hostmarker:
-    driver_opts: {type: none, o: bind, device: $work/hostmarker}
-EOF
-files+=(-f "$work/compose.hostmarker.yml")
-
-cat > "$work/.env" <<EOF
-INSTITUTION=$inst
-SIS_ENV=local
-APP_IMAGE=moodle-$inst:smokebk
-DBTOOLS_IMAGE=moodle-dbtools:smokebk
-WWWROOT=http://localhost:$port
-HTTP_PORT=$port
-HTTPS_PORT=$((port + 1))
-DB_PASS=smoke
-ADMIN_PASS=Smoke-Test-1
-EOF
-
-dc() { docker compose -p smokebk --project-directory "$work" "${files[@]}" "$@"; }
-cleanup() {
-  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
-    echo "smoke-backup: left running in $work; stop with: docker compose -p smokebk --project-directory $work ${files[*]} down -v"
-    return
-  fi
-  dc down -v --remove-orphans >/dev/null 2>&1 || true
-  if [[ -n "${outside:-}" ]]; then
-    docker run --rm -v "$outside:/o" mysql:8.4 sh -c "rm -rf /o/* /o/.[!.]*; chown $(id -u):$(id -g) /o" >/dev/null 2>&1 || true
-    rmdir "$outside" 2>/dev/null || true
-  fi
-  rm -rf "$work"
+smoke_init
+smoke_bind_hostmarker
+smoke_env "INSTITUTION=$inst" "APP_IMAGE=moodle-$inst:smokebk" DBTOOLS_IMAGE=moodle-dbtools:smokebk
+# The outside BACKUP_DIR check leaves a folder owned by another uid; a container clears it.
+remove_outside() {
+  [[ -n "${outside:-}" ]] || return 0
+  docker run --rm -v "$outside:/o" mysql:8.4 sh -c "rm -rf /o/* /o/.[!.]*; chown $(id -u):$(id -g) /o" >/dev/null 2>&1 || true
+  rmdir "$outside" 2>/dev/null || true
 }
-trap cleanup EXIT
+smoke_on_cleanup remove_outside
 
-fail() { echo "smoke-backup: FAIL $*" >&2; dc logs --tail 40 app >&2 || true; exit 1; }
-pass() { echo "smoke-backup: ok   $*"; }
-# setenv <key> <value>: replace a .env line (dbtools reads .env on each run).
-setenv() { sed -i "/^$1=/d" "$work/.env"; echo "$1=$2" >> "$work/.env"; }
-# marker [<name>]: leave only that marker in the host folder (none when no name is given).
-marker() { rm -f "$work/hostmarker"/*; if [[ $# -gt 0 ]]; then touch "$work/hostmarker/$1"; fi; }
-
-tools() { dc run --rm -T dbtools "$@"; }
-sql() {
-  # shellcheck disable=SC2016
-  tools bash -c '. /usr/local/bin/sis-dbtools-lib.sh && sis_db_init && sis_sql -e "$1"' _ "$1"
-}
-moodle_php() { dc exec -T app php; }
-
-wait_up() {
-  local deadline=$((SECONDS + timeout))
-  until curl -fsS -o /dev/null "http://localhost:$port/up"; do
-    (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
-    [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
-    sleep 5
-  done
-}
 start_site() {
   dc up -d --wait db
   dc up -d app
   wait_up
   dc up -d cron
-}
-
-# refused <text> <command…>: the command must fail and its output must contain the text.
-refused() {
-  local want=$1 out
-  shift
-  if out=$("$@" 2>&1); then fail "not refused: $*"; fi
-  [[ "$out" == *"$want"* ]] || fail "refusal of '$*' lacks '$want'; got: $out"
 }
 
 # ---- a running, seeded site -------------------------------------------------------

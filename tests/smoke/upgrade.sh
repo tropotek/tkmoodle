@@ -1,59 +1,21 @@
 #!/usr/bin/env bash
-# Pre-upgrade backup smoke test. Builds the base image and dbtools at test releases
-# 0.0.0-1 to 0.0.0-4, then walks one throwaway site from host/compose.yml through install,
-# restart, upgrades, a failed backup, the escape hatch, the app's own check and a TAG
-# rolled back. Tears everything down afterwards.
-# Usage: bin/smoke-upgrade
-#   SMOKE_PORT=8397  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-port="${SMOKE_PORT:-8397}"
-timeout="${SMOKE_TIMEOUT:-600}"
+# upgrade suite: build the base image and dbtools at test releases 0.0.0-1 to 0.0.0-4, then walk
+# one throwaway site from host/compose.yml through install, restart, upgrades, a failed backup,
+# the escape hatch, the app's own check and a TAG rolled back. Run it through bin/smoke.
+SUITE=smoke-upgrade PROJECT=smokeup DEFAULT_PORT=8397
+# shellcheck source=tests/smoke/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+FAIL_LOGS="preupgrade app"
 
 # Only the release ENV layer differs between these, so the rebuilds are cached.
 for n in 1 2 3 4; do
-  docker build -q --build-arg SIS_RELEASE=0.0.0-$n -t moodle:smokeup-$n . >/dev/null
-  docker build -q --build-arg SIS_RELEASE=0.0.0-$n -t moodle-dbtools:smokeup-$n dbtools >/dev/null
+  smoke_build_base "moodle:smokeup-$n" "0.0.0-$n"
+  smoke_build_dbtools "moodle-dbtools:smokeup-$n" "0.0.0-$n"
 done
 
-work="$(mktemp -d)"
-mkdir "$work/config" "$work/backups"
-cp host/compose.yml "$work/"
-cat > "$work/.env" <<EOF
-INSTITUTION=base
-SIS_ENV=local
-WWWROOT=http://localhost:$port
-HTTP_PORT=$port
-HTTPS_PORT=$((port + 1))
-DB_PASS=smoke
-ADMIN_PASS=Smoke-Test-1
-EOF
+smoke_init
+smoke_env INSTITUTION=base
 
-dc() { docker compose -p smokeup --project-directory "$work" "$@"; }
-cleanup() {
-  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
-    echo "smoke-upgrade: left running in $work; stop with: docker compose -p smokeup --project-directory $work down -v"
-    return
-  fi
-  dc down -v --remove-orphans >/dev/null 2>&1 || true
-  rm -rf "$work"
-}
-trap cleanup EXIT
-
-fail() {
-  echo "smoke-upgrade: FAIL $*" >&2
-  dc logs --tail 20 preupgrade >&2 || true
-  dc logs --tail 20 app >&2 || true
-  exit 1
-}
-pass() { echo "smoke-upgrade: ok   $*"; }
-
-tools() { dc run --rm -T dbtools "$@"; }
-sql() {
-  # shellcheck disable=SC2016
-  tools bash -c '. /usr/local/bin/sis-dbtools-lib.sh && sis_db_init && sis_sql -e "$1"' _ "$1"
-}
 db_release() { sql "SELECT value FROM mdl_config WHERE name = 'sis_release'"; }
 
 # release <app n> [<dbtools n>]: point the site at the images of those test releases.
@@ -65,15 +27,6 @@ since() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 pre_log_since() { dc logs --no-log-prefix --since "$1" preupgrade 2>&1; }
 app_log_since() { dc logs --no-log-prefix --since "$1" app 2>&1; }
 container() { dc ps -a -q "$1"; }
-
-wait_up() {
-  local deadline=$((SECONDS + timeout))
-  until curl -fsS -o /dev/null "http://localhost:$port/up"; do
-    (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
-    [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
-    sleep 5
-  done
-}
 up_site() { dc up -d app && wait_up && dc up -d cron; }
 backups() { find "$work/backups" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' '; }
 
