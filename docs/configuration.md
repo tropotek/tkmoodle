@@ -10,6 +10,7 @@ A site is configured in two places: the server's `.env`, for how the site runs, 
 | `INSTITUTION` | `demo` | which institution image to run: `ghcr.io/tropotek/moodle-<INSTITUTION>` |
 | `TAG` | `latest` | which release of it. Pin one on a real site |
 | `SIS_ENV` | none (required) | `local`, `development`, `uat` or `production`; see [Environments](#environments). The site refuses to start without it |
+| `SIS_HOST_DIR` | unset | the absolute path of the folder holding this host's environment marker; `/etc/tkmoodle` on a server. Unset, nothing on the host is read and only `local` starts; see [Host markers](#host-markers) |
 | `WWWROOT` | `http://localhost` | the site's address. `https://` also makes the web server fetch a certificate for its hostname |
 | `HTTP_PORT`, `HTTPS_PORT` | `80`, `443` | the ports published on the server |
 | `COMPOSE_PROFILES` | none | `.env.example` sets `db`, which runs the bundled MySQL container; remove that line for an external server. A `COMPOSE_PROFILES` set in the shell overrides `.env` |
@@ -68,21 +69,19 @@ site, rather than running it with the wrong mail and restore rules.
 - Exactly one marker. Two are refused, and so is a marker that is a folder. Other files in the
   folder are ignored.
 - The folder must be mode 755 and the marker 644: the site reads them as an ordinary user.
-- Nothing creates the folder or the marker. A server gets both when it is set up
-  ([Installation](installation.md#install)).
-- Until the `hostmarker` line in `compose.yml` is uncommented, nothing on the host is read, so
-  only `local` starts.
+- A server's folder and marker are made by hand when it is set up
+  ([Installation](installation.md#install)); nothing else creates the marker.
+- Until `SIS_HOST_DIR=/etc/tkmoodle` is set in `.env`, nothing on the host is read, so only
+  `local` starts. A folder that doesn't exist is created empty by Docker, and refused.
 - `app`, `cron`, the pre-upgrade backup and `sis-restore` check the marker. `sis-backup` doesn't,
   so a mis-marked host can still take a backup.
 
-To turn it on for a site that has already run, remove its empty `hostmarker` volume first. The
-volume is named after `COMPOSE_PROJECT_NAME` (default `moodle`):
+To turn it on for a site that has already run, create the marker, set the variable and start
+it again:
 
 ```bash
 sudo install -d -m 755 /etc/tkmoodle && sudo touch /etc/tkmoodle/production
-docker compose down
-docker volume rm moodle_hostmarker
-sed -i 's|^    # driver_opts:|    driver_opts:|' compose.yml
+echo SIS_HOST_DIR=/etc/tkmoodle >> .env
 docker compose up -d
 ```
 

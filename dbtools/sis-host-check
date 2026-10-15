@@ -1,8 +1,8 @@
 #!/bin/sh
 # Refuses to go on when this host's environment marker disagrees with SIS_ENV. A server
-# mounts its /etc/tkmoodle at /sis/host (the hostmarker volume in compose.yml), holding one
-# empty file: devserver, uat or production. Without the mount the folder is empty, which
-# only SIS_ENV=local accepts.
+# sets SIS_HOST_DIR=/etc/tkmoodle in .env, which compose.yml binds at /sis/host; the folder
+# holds one empty file: devserver, uat or production. Unset, /sis/host is an empty volume,
+# which only SIS_ENV=local accepts.
 # Usage: sis-host-check [<folder>]   (default /sis/host; the tests pass another)
 set -eu
 
@@ -50,8 +50,7 @@ fi
 
 [ -n "$found" ] || refuse "SIS_ENV=$SIS_ENV, but this host has no environment marker. A server must say what it is:" \
     "  sudo install -d -m 755 $host && sudo touch $host/$want" \
-    "then uncomment the hostmarker driver_opts line in compose.yml and run docker compose up -d again." \
-    "If the line is already uncommented, the site ran before it was: docker compose down && docker volume rm <project>_hostmarker, then up -d."
+    "then set SIS_HOST_DIR=/etc/tkmoodle in .env and run docker compose up -d again."
 
 [ "$found" = "$want" ] || refuse "SIS_ENV=$SIS_ENV expects $host/$want, but this host is marked $host/$found." \
     "The marker says what this machine is: correct SIS_ENV in .env or, if the host really has been repurposed:" \
