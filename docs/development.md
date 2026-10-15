@@ -47,7 +47,7 @@ Inside the image, Moodle lives in `/app/moodle`: its command-line scripts are in
 | `php tests/settings_test.php` | the settings renderer: validation, `${VAR}`, the rendered PHP, the command's exit codes | under a second |
 | `bin/smoke [<institution>]` | builds the images, installs a fresh site from `host/compose.yml`, then checks `/up`, the login page, cron, and that every locked plugin installed. Tears it all down after | about 2 minutes |
 | `bin/smoke-env` | runs the base image with Mailpit and Redis, and checks mail on `local` and `development`, curl on `local` and `production`, SMTP locking, and Redis sessions surviving a restart | about 3 minutes |
-| `bin/smoke-backup` | backs up a seeded site, checks every refusal, restores it; `SMOKE_EXTERNAL_DB=<mysql container>` runs it against an external MySQL | about 5 minutes |
+| `bin/smoke-backup` | backs up a seeded site, checks every refusal, restores it | about 5 minutes |
 | `bin/smoke-upgrade` | walks one site through install, upgrades, a failed backup, the escape hatch, the app's own check and a rollback | about 4 minutes |
 | `bin/check-lock` | every institution pins the same Moodle core as the base | instant |
 | `shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh` | the shell scripts, as lint runs it | instant |
