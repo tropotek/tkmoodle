@@ -12,7 +12,7 @@ A site is configured in two places: the server's `.env`, for how the site runs, 
 | `SIS_ENV` | none (required) | `local`, `development`, `uat` or `production`; see [Environments](#environments). The site refuses to start without it |
 | `WWWROOT` | `http://localhost` | the site's address. `https://` also makes the web server fetch a certificate for its hostname |
 | `HTTP_PORT`, `HTTPS_PORT` | `80`, `443` | the ports published on the server |
-| `COMPOSE_PROFILES` | `db` | `db` runs the bundled MySQL container; leave it out for an external server. A `COMPOSE_PROFILES` set in the shell overrides `.env` |
+| `COMPOSE_PROFILES` | none | `.env.example` sets `db`, which runs the bundled MySQL container; remove that line for an external server. A `COMPOSE_PROFILES` set in the shell overrides `.env` |
 | `DB_HOST` | `db` | `db` is the bundled MySQL container; anything else is an external server |
 | `DB_PORT`, `DB_NAME`, `DB_USER` | `3306`, `moodle`, `moodle` | the database to use |
 | `DB_PASS` | none (required) | the database password; also creates the bundled database's user |

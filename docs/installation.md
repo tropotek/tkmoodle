@@ -5,7 +5,7 @@ any code.
 
 ## Requirements
 
-- Docker Engine with the Compose plugin.
+- Docker Engine with the Compose plugin, v2.20 or later.
 - About 3 GB of disk for the image, plus the site's files and database.
 - Ports 80 and 443 reachable, for a site with a real hostname.
 
