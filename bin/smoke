@@ -45,6 +45,7 @@ cleanup() {
     echo "smoke: left running; stop with: docker compose -p smoke --project-directory $work down -v"
   else
     dc down -v --remove-orphans >/dev/null 2>&1 || true
+    docker compose -p smokehost --project-directory "$work/hostcheck" down -v >/dev/null 2>&1 || true
     chmod -R u+rwx "$work" 2>/dev/null || true; rm -rf "$work"
   fi
 }
@@ -99,6 +100,34 @@ rc=0
 in_host development moodle-dbtools:smoke sis-restore >/dev/null || rc=$?
 [[ "$rc" == 64 ]] || fail "sis-restore did not reach its usage check on a devserver host (exit $rc)"
 echo "smoke: host markers are checked in both images"
+
+# The documented switch: uncomment the hostmarker line, here pointed at a test folder. Its own
+# project, so the main run's plain volume is never reused.
+hw="$work/hostcheck"
+mkdir -p "$hw/config" "$hw/backups"
+cp "$work/.env" "$hw/"
+sed -e 's|^    # driver_opts:|    driver_opts:|' -e "s|device: /etc/tkmoodle}|device: $hw/marker}|" \
+  host/compose.yml > "$hw/compose.yml"
+grep -qF "    driver_opts: {type: none, o: bind, device: $hw/marker}" "$hw/compose.yml" \
+  || fail "the documented hostmarker edit did not apply to host/compose.yml"
+hdc() { docker compose -p smokehost --project-directory "$hw" "$@"; }
+mkdir "$hw/marker"
+touch "$hw/marker/production"
+out=$(hdc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1) \
+  || fail "with the hostmarker line uncommented, a production host marked production was refused: $out"
+hdc down -v >/dev/null 2>&1 || true
+rm -rf "$hw/marker"
+if out=$(hdc run --rm --no-deps -T app true 2>&1); then fail "started with the marker folder missing"; fi
+[[ "$out" == *"no such file or directory"* ]] || fail "missing marker folder: $out"
+hdc down -v >/dev/null 2>&1 || true
+echo "smoke: the hostmarker line binds the host folder, and a missing one stops the site"
+
+# Unedited compose.yml: the hostmarker volume is empty, so only local starts.
+if out=$(dc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1); then
+  fail "production started with the hostmarker line commented"
+fi
+[[ "$out" == *"has no environment marker"* ]] || fail "unedited compose.yml, production: $out"
+echo "smoke: an unedited compose.yml refuses a server SIS_ENV"
 
 dc up -d db app
 deadline=$((SECONDS + timeout))
