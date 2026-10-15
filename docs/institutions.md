@@ -5,7 +5,7 @@ name doesn't start with `_` into its own image.
 
 | File | Holds |
 |---|---|
-| `composer.json` | the plugins, each pinned to an exact commit |
+| `composer.json` | the plugins, each pinned to a commit or a version tag |
 | `composer.lock` | what Composer resolved; commit it with every change |
 | `settings.json` | Moodle settings: `defaults` and `locked`, never connection or path settings ([Configuration](configuration.md#site-settings)) |
 
@@ -26,7 +26,7 @@ Composer gets a plugin in one of two ways, depending on whether its repository s
 
 | The plugin's repo | In `composer.json` | Managed with |
 |---|---|---|
-| has a typed `composer.json` | a `vcs` repository entry, and `require` by its declared name | Composer |
+| has a typed `composer.json` | a `vcs` repository entry, and `require` by its declared name | `bin/plugin` (version tag) or by hand |
 | has none (most) | an inline `package` entry: name, version, type, git URL and commit | `bin/plugin` |
 
 ### With bin/plugin
