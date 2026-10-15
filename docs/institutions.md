@@ -7,7 +7,7 @@ name doesn't start with `_` into its own image.
 |---|---|
 | `composer.json` | the plugins, each pinned to an exact commit |
 | `composer.lock` | what Composer resolved; commit it with every change |
-| `settings.json` | Moodle settings: `defaults` and `locked` ([Configuration](configuration.md#site-settings)) |
+| `settings.json` | Moodle settings: `defaults` and `locked`, never connection or path settings ([Configuration](configuration.md#site-settings)) |
 
 ## Add an institution
 
@@ -37,14 +37,23 @@ bin/plugin <name> bump theme_boost_union v5.2-r12
 bin/plugin <name> remove theme_boost_union
 ```
 
-`bin/plugin` looks up the commit for the tag or branch, reads the plugin's `version.php` there,
-writes the entry and re-locks. Review the diff and commit it. It handles GitHub URLs only, and
-inline entries only. It is a stopgap: Moodle's own Composer repository, once it carries
-Marketplace plugins, will make each plugin one `require` line.
+`bin/plugin` reads the plugin's `version.php` at the tag, branch or commit, writes the entry
+and re-locks. Review the diff and commit it. If a step fails part-way, it puts
+`composer.json` and `composer.lock` back as they were.
+
+- The URL is `https://<host>/<owner>/<repo>` on any git host. The package is named
+  `<owner>/moodle-<component>`. Deeper paths, such as GitLab subgroups, aren't supported.
+- A plugin whose repository has a typed `composer.json` gets a `vcs` entry instead, required
+  by its own package name. It takes a tag only, and the tag must read as a version, such as
+  `2026081302` or `v5.5.1`.
+- It tells an unreachable URL apart from a ref that doesn't exist.
+
+It is a stopgap: Moodle's own Composer repository, once it carries Marketplace plugins, will
+make each plugin one `require` line.
 
 ### By hand
 
-For a `vcs` plugin, add the repository and require it:
+To add a `vcs` plugin without `bin/plugin`, add the repository and require it:
 
 ```json
 { "type": "vcs", "url": "https://github.com/jonof/moodle-block_completion_progress.git", "no-api": true }

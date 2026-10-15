@@ -1,99 +1,197 @@
 #!/usr/bin/env bash
-# Manage an institution's inline plugin entries: plugins whose repository has no
-# composer.json of its own, declared as a "package" in the institution's composer.json.
-# A stopgap until Moodle's own Composer repository carries the plugins we use.
+# Manage an institution's plugin entries in its composer.json: an inline "package" entry for a
+# plugin whose repository has no composer.json of its own, or a "vcs" repository entry for one
+# whose repository has a typed composer.json. A stopgap until Moodle's own Composer repository
+# carries the plugins we use.
 #   bin/plugin <institution> add <git-url> <ref>       add a plugin at a tag, branch or commit
 #   bin/plugin <institution> bump <component> <ref>    move a plugin to another ref
 #   bin/plugin <institution> remove <component>        drop a plugin
-# Each re-locks the institution. Review the diff and commit it like any other change.
+# The URL is https://<host>/<owner>/<repo>. A plugin with its own composer.json takes a version
+# tag only, such as 2026081302 or v5.5.1. Each command re-locks the institution; if it fails
+# part-way, composer.json and composer.lock are put back. Review the diff and commit it.
 # shellcheck disable=SC2016  # $n, $v ... in single quotes are jq variables
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-usage() { sed -n '5,7p' "$0" | sed 's/^# //' >&2; exit 64; }
+usage() { sed -n '6,8p' "$0" | sed 's/^# //' >&2; exit 64; }
 fail() { echo "plugin: $*" >&2; exit 1; }
 
 [[ $# -ge 3 ]] || usage
 inst="$1" cmd="$2"
 shift 2
 json="institutions/$inst/composer.json"
+lock="institutions/$inst/composer.lock"
 [[ -f "$json" ]] || fail "no $json"
 
 image="${SIS_BASE_IMAGE:-moodle:dev}"
 docker image inspect "$image" >/dev/null 2>&1 || docker build --target dev -t "$image" .
 
-# Prints "<commit> <component> <version>" for a plugin repo at a ref, read from its
-# version.php inside the base image.
+# Taken just before the first edit. A failed exit after that puts composer.json and
+# composer.lock back; a failure before it has nothing to undo.
+snap=""
+snapshot() {
+  [[ -z "$snap" ]] || return 0
+  snap=$(mktemp -d)
+  cp "$json" "$snap/composer.json"
+  if [[ -f "$lock" ]]; then cp "$lock" "$snap/composer.lock"; fi
+}
+restore_on_exit() {
+  local rc=$?
+  if [[ -n "$snap" ]]; then
+    if ((rc != 0)); then
+      cat "$snap/composer.json" > "$json"
+      if [[ -f "$snap/composer.lock" ]]; then cat "$snap/composer.lock" > "$lock"; else rm -f "$lock"; fi
+      echo "plugin: failed; $json and composer.lock are back as they were" >&2
+    fi
+    rm -rf "$snap"
+  fi
+  exit "$rc"
+}
+trap restore_on_exit EXIT
+# Ctrl-C would otherwise reach the EXIT trap with status 0 and skip the restore.
+trap 'exit 130' INT TERM
+
+# Prints "<commit> <component> <version> <composer name, or -> <yes if the ref is a tag, or no>"
+# for a plugin repo at a ref, read inside the base image.
 read_plugin() {
-  docker run --rm -i --entrypoint sh "$image" -s "$1" "$2" <<'SH'
+  docker run --rm -i -e GIT_TERMINAL_PROMPT=0 --entrypoint sh "$image" -s "$1" "$2" <<'SH'
 set -eu
 url="$1" ref="$2" dir=$(mktemp -d)
+if ! err=$(git ls-remote "$url" 2>&1 >/dev/null); then
+  echo "plugin: can't reach $url: $(printf '%s\n' "$err" | tail -n 1)" >&2
+  exit 1
+fi
 git -C "$dir" init -q
 git -C "$dir" fetch -q --depth 1 "$url" "$ref" 2>/dev/null || { echo "plugin: ref '$ref' not found in $url" >&2; exit 1; }
 git -C "$dir" checkout -q FETCH_HEAD
 [ -f "$dir/version.php" ] || { echo "plugin: no version.php at $ref" >&2; exit 1; }
+tag=no
+if git ls-remote --exit-code --tags "$url" "refs/tags/$ref" >/dev/null 2>&1; then tag=yes; fi
 printf '%s ' "$(git -C "$dir" rev-parse HEAD)"
 php -r '
 define("MOODLE_INTERNAL", 1); define("ANY_VERSION", "any");
 foreach (["MATURITY_ALPHA" => 50, "MATURITY_BETA" => 100, "MATURITY_RC" => 150, "MATURITY_STABLE" => 200] as $k => $v) define($k, $v);
 $plugin = new stdClass();
 include $argv[1];
-echo $plugin->component, " ", $plugin->version, "\n";' "$dir/version.php"
+echo $plugin->component, " ", $plugin->version;' "$dir/version.php"
+php -r '
+$c = is_file($argv[1]) ? json_decode((string)file_get_contents($argv[1]), true) : null;
+$typed = is_array($c) && str_starts_with((string)($c["type"] ?? ""), "moodle-") && is_string($c["name"] ?? null) && $c["name"] !== "";
+echo " ", $typed ? $c["name"] : "-";' "$dir/composer.json"
+echo " $tag"
 SH
 }
 
-# The inline entry's package name for a component, or nothing.
+# "inline <name>" or "vcs <name>" for the package that installs a component; nothing when the
+# institution doesn't require one.
 entry_for() {
-  jq -r --arg c "$1" '.repositories[]? | select(.type == "package") | .package[]
-    | select(.name | endswith("/moodle-" + $c)) | .name' "$json"
+  local name
+  name=$(jq -r --arg c "$1" '.require // {} | keys[] | select(endswith("/moodle-" + $c))' "$json" | head -n 1)
+  [[ -n "$name" ]] || return 0
+  if jq -e --arg n "$name" 'any(.repositories[]?; .type == "package" and any(.package[]?; .name == $n))' "$json" >/dev/null; then
+    echo "inline $name"
+  else
+    echo "vcs $name"
+  fi
+}
+
+# The URL Composer cloned a package from, per the lock; nothing when it isn't locked.
+locked_url() {
+  [[ -f "$lock" ]] || return 0
+  jq -r --arg n "$1" '.packages[]? | select(.name == $n) | .source.url // empty' "$lock"
+}
+
+# A repository URL without a trailing / or .git, so two spellings of one repo compare equal.
+norm() { local u=${1%/}; echo "${u%.git}"; }
+
+# A plugin with its own composer.json is required by version, so its ref must be a tag that
+# Composer reads as one.
+require_version_tag() {
+  [[ "$2" == yes ]] || fail "$1 isn't a tag; a plugin with its own composer.json takes a version tag, such as 2026081302 or v5.5.1"
+  [[ "$1" =~ ^v?[0-9]+(\.[0-9]+)*$ ]] || fail "tag $1 doesn't read as a version, so Composer can't require it; use a tag such as 2026081302 or v5.5.1"
 }
 
 edit_json() {  # edit_json <jq filter> [jq args...]
   local filter="$1" tmp
   shift
+  snapshot
   tmp=$(mktemp)
-  jq --indent 4 "$@" "$filter" "$json" > "$tmp" && mv "$tmp" "$json"
+  jq --indent 4 "$@" "$filter" "$json" > "$tmp"
+  cat "$tmp" > "$json"
+  rm -f "$tmp"
 }
+relock() { snapshot; bin/composer "$inst" "$@"; }
 
 case "$cmd" in
   add)
     [[ $# -eq 2 ]] || usage
     url="$1" ref="$2"
-    read -r sha component version < <(read_plugin "$url" "$ref") || exit 1
+    [[ "$url" =~ ^https://[^/]+/([^/]+)/[^/]+$ ]] \
+      || fail "give the plugin's URL as https://<host>/<owner>/<repo>; deeper paths, such as GitLab subgroups, aren't supported"
+    owner=$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")
+    read -r sha component version cname tag < <(read_plugin "$url" "$ref") || exit 1
     [[ -z "$(entry_for "$component")" ]] || fail "$component is already in $json; use bump"
-    owner=$(sed -E 's#^https://github\.com/([^/]+)/.*#\1#' <<<"$url" | tr '[:upper:]' '[:lower:]')
-    name="$owner/moodle-$component"
-    edit_json '
-      (if any(.repositories[]; .type == "package") then . else .repositories += [{"type": "package", "package": []}] end)
-      | (.repositories[] | select(.type == "package") | .package) += [{
-          "name": $n, "version": $v, "type": ("moodle-" + ($c | split("_")[0])),
-          "source": {"type": "git", "url": $u, "reference": $s}}]' \
-      --arg n "$name" --arg v "$version" --arg c "$component" --arg u "$url" --arg s "$sha"
-    bin/composer "$inst" require --no-update "$name:$version"
-    bin/composer "$inst" update "$name" --no-install
-    echo "plugin: added $component $version ($sha)"
+    if [[ "$cname" != - ]]; then
+      [[ "$cname" == */moodle-"$component" ]] \
+        || fail "$url names its package $cname; bin/plugin finds plugins by <owner>/moodle-$component, so add this one by hand"
+      require_version_tag "$ref" "$tag"
+      if ! jq -e --arg u "$(norm "$url")" \
+          'any(.repositories[]?; .type == "vcs" and ((.url | sub("/$"; "") | sub("\\.git$"; "")) == $u))' "$json" >/dev/null; then
+        edit_json '.repositories += [{"type": "vcs", "url": $u, "no-api": true}]' --arg u "$url"
+      fi
+      relock require --no-update "$cname:${ref#v}"
+      relock update "$cname" --no-install
+      echo "plugin: added $component $ref as $cname (vcs)"
+    else
+      name="$owner/moodle-$component"
+      edit_json '
+        (if any(.repositories[]?; .type == "package") then . else .repositories += [{"type": "package", "package": []}] end)
+        | (.repositories[] | select(.type == "package") | .package) += [{
+            "name": $n, "version": $v, "type": ("moodle-" + ($c | split("_")[0])),
+            "source": {"type": "git", "url": $u, "reference": $s}}]' \
+        --arg n "$name" --arg v "$version" --arg c "$component" --arg u "$url" --arg s "$sha"
+      relock require --no-update "$name:$version"
+      relock update "$name" --no-install
+      echo "plugin: added $component $version ($sha)"
+    fi
     ;;
   bump)
     [[ $# -eq 2 ]] || usage
     component="$1" ref="$2"
-    name=$(entry_for "$component")
-    [[ -n "$name" ]] || fail "$component has no inline entry in $json"
-    url=$(jq -r --arg n "$name" '.repositories[] | select(.type == "package") | .package[] | select(.name == $n) | .source.url' "$json")
-    read -r sha found version < <(read_plugin "$url" "$ref") || exit 1
-    [[ "$found" == "$component" ]] || fail "$url at $ref is $found, not $component"
-    edit_json '(.repositories[] | select(.type == "package") | .package[] | select(.name == $n))
-      |= (.version = $v | .source.reference = $s)' --arg n "$name" --arg v "$version" --arg s "$sha"
-    bin/composer "$inst" require --no-update "$name:$version"
-    bin/composer "$inst" update "$name" --no-install
-    echo "plugin: $component now $version ($sha)"
+    read -r kind name < <(entry_for "$component") || fail "$component isn't required in $json"
+    if [[ "$kind" == inline ]]; then
+      url=$(jq -r --arg n "$name" '.repositories[] | select(.type == "package") | .package[] | select(.name == $n) | .source.url' "$json")
+      read -r sha found version _ _ < <(read_plugin "$url" "$ref") || exit 1
+      [[ "$found" == "$component" ]] || fail "$url at $ref is $found, not $component"
+      edit_json '(.repositories[] | select(.type == "package") | .package[] | select(.name == $n))
+        |= (.version = $v | .source.reference = $s)' --arg n "$name" --arg v "$version" --arg s "$sha"
+      relock require --no-update "$name:$version"
+      relock update "$name" --no-install
+      echo "plugin: $component now $version ($sha)"
+    else
+      url=$(locked_url "$name")
+      [[ -n "$url" ]] || fail "$name isn't in $lock; lock it first with: bin/composer $inst update $name --no-install"
+      read -r _ found _ _ tag < <(read_plugin "$url" "$ref") || exit 1
+      [[ "$found" == "$component" ]] || fail "$url at $ref is $found, not $component"
+      require_version_tag "$ref" "$tag"
+      relock require --no-update "$name:${ref#v}"
+      relock update "$name" --no-install
+      echo "plugin: $component now $ref ($name, vcs)"
+    fi
     ;;
   remove)
     [[ $# -eq 1 ]] || usage
     component="$1"
-    name=$(entry_for "$component")
-    [[ -n "$name" ]] || fail "$component has no inline entry in $json"
-    edit_json '(.repositories[] | select(.type == "package") | .package) |= map(select(.name != $n))' --arg n "$name"
-    bin/composer "$inst" remove "$name" --no-install
+    read -r kind name < <(entry_for "$component") || fail "$component isn't required in $json"
+    if [[ "$kind" == inline ]]; then
+      edit_json '(.repositories[] | select(.type == "package") | .package) |= map(select(.name != $n))' --arg n "$name"
+    else
+      url=$(locked_url "$name")
+      [[ -n "$url" ]] || fail "$name isn't in $lock, so its vcs repository can't be found; remove it by hand"
+      edit_json '.repositories |= map(select(.type != "vcs" or ((.url | sub("/$"; "") | sub("\\.git$"; "")) != $u)))' \
+        --arg u "$(norm "$url")"
+    fi
+    relock remove "$name" --no-install
     echo "plugin: removed $component"
     ;;
   *)
