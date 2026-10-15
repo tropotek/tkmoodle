@@ -50,7 +50,8 @@ fi
 
 [ -n "$found" ] || refuse "SIS_ENV=$SIS_ENV, but this host has no environment marker. A server must say what it is:" \
     "  sudo install -d -m 755 $host && sudo touch $host/$want" \
-    "then uncomment the hostmarker driver_opts line in compose.yml and run docker compose up -d again."
+    "then uncomment the hostmarker driver_opts line in compose.yml and run docker compose up -d again." \
+    "If the line is already uncommented, the site ran before it was: docker compose down && docker volume rm <project>_hostmarker, then up -d."
 
 [ "$found" = "$want" ] || refuse "SIS_ENV=$SIS_ENV expects $host/$want, but this host is marked $host/$found." \
     "The marker says what this machine is: correct SIS_ENV in .env or, if the host really has been repurposed:" \

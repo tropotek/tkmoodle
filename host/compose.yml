@@ -114,9 +114,10 @@ volumes:
   db:
   # Environment protection: the site refuses an SIS_ENV that disagrees with this host's marker
   # in /etc/tkmoodle (devserver, uat or production). On a server, create the folder and its
-  # marker, then uncomment the driver_opts line; see docs/configuration.md#host-markers. If the
-  # site has already started, run docker compose down and docker volume rm <project>_hostmarker
-  # first. Left commented, nothing on the host is read and only SIS_ENV=local starts.
+  # marker, then uncomment the driver_opts line; see
+  # https://tropotek.github.io/tkmoodle/configuration/#host-markers. If the site has already
+  # started, run docker compose down and docker volume rm <project>_hostmarker first. Left
+  # commented, nothing on the host is read and only SIS_ENV=local starts.
   # nocopy: Docker would otherwise copy the image folder's owner onto /etc/tkmoodle.
   hostmarker:
     # driver_opts: {type: none, o: bind, device: /etc/tkmoodle}
