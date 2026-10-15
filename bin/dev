@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-dc() { docker compose -f compose.dev.yml "$@"; }
+dc() { docker compose "$@"; }
 
 if [[ "${1:-up}" == up ]]; then
   [[ $# -gt 0 ]] && shift

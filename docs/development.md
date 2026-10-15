@@ -21,6 +21,10 @@ bin/dev exec app php /app/moodle/admin/cli/purge_caches.php
 bin/dev down        # stop; add -v to also delete the site's database and files
 ```
 
+The dev stack is the repo's root `compose.yml`, so plain `docker compose …` at the root works
+on it, as `bin/dev <args>` does. Copy `.env.example` to `.env` to change its ports or settings.
+The host's compose file is `host/compose.yml`.
+
 ## Editing code
 
 - **Internal plugins** (`plugins/`) are mounted into the running container, so an edit shows on
