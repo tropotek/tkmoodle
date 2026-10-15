@@ -30,6 +30,7 @@ mkdir "$work/config" "$work/backups"
 cat > "$work/.env" <<EOF
 APP_IMAGE=$image
 DBTOOLS_IMAGE=moodle-dbtools:smoke
+SIS_ENV=local
 WWWROOT=http://localhost:$port
 HTTP_PORT=$port
 HTTPS_PORT=$((port + 1))
@@ -50,6 +51,16 @@ cleanup() {
 trap cleanup EXIT
 
 fail() { echo "smoke: FAIL $*" >&2; dc logs --tail 60 app >&2 || true; exit 1; }
+
+# SIS_ENV is checked before anything else, in the app image and in preupgrade.
+for value in "" bogus Production; do
+  if out=$(docker run --rm -e SIS_ENV="$value" "$image" true 2>&1); then fail "SIS_ENV='$value' was accepted"; fi
+  [[ "$out" == *"SIS_ENV must be one of local, development, uat, production (got '$value')"* ]] || fail "SIS_ENV='$value': $out"
+done
+docker run --rm -e SIS_ENV=local "$image" true >/dev/null || fail "SIS_ENV=local was refused"
+if out=$(docker run --rm -e SIS_ENV=bogus moodle-dbtools:smoke sis-preupgrade 2>&1); then fail "preupgrade accepted SIS_ENV=bogus"; fi
+[[ "$out" == *"SIS_ENV must be one of"* ]] || fail "preupgrade: $out"
+echo "smoke: SIS_ENV is checked"
 
 dc up -d db app
 deadline=$((SECONDS + timeout))

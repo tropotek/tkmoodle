@@ -75,6 +75,7 @@ fi
 
 cat > "$work/.env" <<EOF
 INSTITUTION=$inst
+SIS_ENV=local
 APP_IMAGE=moodle-$inst:smokebk
 DBTOOLS_IMAGE=moodle-dbtools:smokebk
 WWWROOT=http://localhost:$port
@@ -107,6 +108,8 @@ trap cleanup EXIT
 
 fail() { echo "smoke-backup: FAIL $*" >&2; dc logs --tail 40 app >&2 || true; exit 1; }
 pass() { echo "smoke-backup: ok   $*"; }
+# setenv <key> <value>: replace a .env line (dbtools reads .env on each run).
+setenv() { sed -i "/^$1=/d" "$work/.env"; echo "$1=$2" >> "$work/.env"; }
 
 tools() { dc run --rm -T dbtools "$@"; }
 sql() {
@@ -300,6 +303,16 @@ unchanged "damaged archive"
 refused "no backup" tools sis-restore missing
 refused "BACKUP_DIR" tools sis-restore ../first
 pass "damaged, missing and path-like backups refused"
+
+# ---- --any-institution: only local and development may cross institutions --------
+setenv SIS_ENV production
+refused "only works with SIS_ENV local or development" tools sis-restore --any-institution elsewhere
+unchanged "--any-institution on production"
+setenv SIS_ENV development
+out=$(tools sis-restore --any-institution elsewhere 2>&1) || fail "--any-institution on development: $out"
+[[ "$out" == *"restoring elsewhere onto $inst (--any-institution)"* ]] || fail "no --any-institution log line: $out"
+setenv SIS_ENV local
+pass "--any-institution is refused on production and restores on development"
 
 # ---- wipe and restore ---------------------------------------------------------------
 dc down -v

@@ -33,6 +33,10 @@ A failed build publishes nothing for that institution, and servers keep running 
 Fix it and tag the next number. Servers move to the release by changing `TAG`
 ([Upgrading](upgrading.md)).
 
+A release that adds a required `.env` setting says so in its notes. A host without it stops at
+`preupgrade`, before any backup, and the site stays down until the setting is added and `up -d`
+runs again. `SIS_ENV` is the first.
+
 Pull requests only run lint: shellcheck, PHP syntax, `composer validate` and `bin/check-lock`.
 Images are built only on a tag.
 

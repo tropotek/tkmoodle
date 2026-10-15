@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 # Replace the site's database and moodledata with a backup from /backups/<name>/.
 # Refuses, changing nothing, while the site runs, or when the backup is from a newer
-# release or another institution. Usage: sis-restore <name>
+# release or another institution. Usage: sis-restore [--any-institution] <name>
+# --any-institution (SIS_ENV local or development only) restores another institution's
+# backup; the next start drops the data of plugins this image lacks.
 set -euo pipefail
 # shellcheck source=dbtools/sis-dbtools-lib.sh
 . "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
 
-[[ $# -eq 1 && "$1" != -* ]] || { echo "usage: sis-restore <name>" >&2; exit 64; }
+any=0
+if [[ "${1:-}" == --any-institution ]]; then any=1; shift; fi
+[[ $# -eq 1 && "$1" != -* ]] || { echo "usage: sis-restore [--any-institution] <name>" >&2; exit 64; }
+if ((any)); then
+  case "${SIS_ENV:-}" in
+    local|development) ;;
+    *) die "--any-institution only works with SIS_ENV local or development (this host: ${SIS_ENV:-unset})" ;;
+  esac
+fi
 name=$1
 sis_check_name "$name"
 dir=/backups/$name
@@ -22,8 +32,10 @@ b_release=$(sis_manifest_get "$dir/manifest.env" sis_release)
 b_institution=$(sis_manifest_get "$dir/manifest.env" sis_institution)
 [[ -n "$b_release" && -n "$b_institution" ]] || die "backup $name has no release or institution in manifest.env"
 target_institution=${SIS_TARGET_INSTITUTION:-demo}
-[[ "$b_institution" == "$target_institution" ]] \
-  || die "backup $name is from institution $b_institution, but this host runs $target_institution (INSTITUTION in .env)"
+if [[ "$b_institution" != "$target_institution" ]]; then
+  ((any)) || die "backup $name is from institution $b_institution, but this host runs $target_institution (INSTITUTION in .env)"
+  log "restoring $b_institution onto $target_institution (--any-institution)"
+fi
 sis_release_allowed "$b_release" "$SIS_RELEASE" || case $? in
   1) die "backup $name is from release $b_release, newer than this dbtools ($SIS_RELEASE); set TAG=$b_release in .env and docker compose pull, then run: docker compose run --rm dbtools sis-restore $name" ;;
   *) die "backup $name is from a dev build, which can't be restored onto release $SIS_RELEASE" ;;

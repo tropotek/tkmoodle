@@ -1,13 +1,19 @@
-# Local development. Start it with bin/dev, which builds the images this file runs.
+# Local development: the dev stack, at the repo root so `docker compose` finds it. Start it
+# with bin/dev, which builds the images it runs. Settings: copy .env.example to .env.
 # Plugin code is bind-mounted, so edits are live; harness changes need bin/dev up (a cached rebuild).
 name: moodle-dev
 
 x-env: &env
   WWWROOT: http://localhost:${DEV_PORT:-8300}
+  SIS_ENV: local
+  SMTP_HOSTS: ${SMTP_HOSTS:-mailpit:1025}
+  # Moodle's default no-reply address, noreply@localhost here, is not a valid address.
+  SMTP_NOREPLY: ${SMTP_NOREPLY:-noreply@example.com}
+  REDIS_HOST: ${REDIS_HOST:-}
   DB_HOST: db
   DB_PASS: dev
   ADMIN_PASS: Dev-Admin-1
-  SITE_FULLNAME: Moodle (dev)
+  SITE_FULLNAME: ${SITE_FULLNAME:-Moodle (dev)}
   SISEXAMPLE_REMOTE_URL: ${SISEXAMPLE_REMOTE_URL:-https://remote.example.test}
   SISEXAMPLE_SSO_ISSUER: ${SISEXAMPLE_SSO_ISSUER:-}
   SISEXAMPLE_SSO_CLIENT_ID: ${SISEXAMPLE_SSO_CLIENT_ID:-}
@@ -53,6 +59,12 @@ services:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -umoodle -pdev --silent"]
       interval: 5s
       retries: 30
+
+  # Catches every message the dev site sends; browse it on :8325.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    ports:
+      - "${MAILPIT_PORT:-8325}:8025"
 
 volumes:
   moodledata:

@@ -26,6 +26,7 @@ any code.
     |---|---|
     | `INSTITUTION` | `demo` (the image is `ghcr.io/tropotek/moodle-demo`) |
     | `TAG` | `5.3.0-3`. Pin a release; avoid `latest` on a real site |
+    | `SIS_ENV` | `production` (or `uat`, `development`, `local`; see [Configuration](configuration.md#environments)) |
     | `WWWROOT` | `https://moodle.example.com` |
     | `DB_PASS` | a long random password |
     | `ADMIN_PASS` | the first admin's password. Use a strong one: the installer doesn't check it against Moodle's password policy |
