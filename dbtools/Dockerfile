@@ -4,7 +4,6 @@
 FROM mysql:8.4
 LABEL org.opencontainers.image.source=https://github.com/tropotek/tkmoodle
 COPY --chmod=0755 sis-backup sis-restore sis-preupgrade sis-host-check /usr/local/bin/
-RUN mkdir -p /sis/host
 COPY --chmod=0644 sis-dbtools-lib.sh /usr/local/bin/
 ARG SIS_RELEASE=dev
 ENV SIS_RELEASE=${SIS_RELEASE}
