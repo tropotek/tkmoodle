@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Runs before the app on every start (the preupgrade service). When the release being
+# started differs from the one the database last booted on, it backs up to
+# /backups/pre-<release> first and records that it did; a failed backup stops the upgrade.
+set -euo pipefail
+# shellcheck source=dbtools/sis-dbtools-lib.sh
+. "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
+
+target=$SIS_RELEASE
+name=pre-$target
+fail() {
+  die "pre-upgrade backup FAILED: $*; the upgrade did not start and the site is down. Fix the cause and run docker compose up -d again, set TAG back, or set SKIP_PREUPGRADE_BACKUP=1 for this one upgrade"
+}
+mark() {
+  sis_sql -e "INSERT INTO mdl_config (name, value) VALUES ('sis_preupgrade_backup', '$target') AS new ON DUPLICATE KEY UPDATE value = new.value"
+}
+
+if [[ "${SKIP_PREUPGRADE_BACKUP:-}" == 1 ]]; then
+  log "SKIPPING the pre-upgrade backup (SKIP_PREUPGRADE_BACKUP=1)"
+  exit 0
+fi
+
+sis_db_init
+wait=${DB_WAIT_TIMEOUT:-120}
+deadline=$((SECONDS + wait))
+until sis_sql -e 'SELECT 1' >/dev/null 2>&1; do
+  (( SECONDS < deadline )) || fail "database $DB_HOST not reachable after ${wait}s"
+  sleep 2
+done
+
+current=""
+tables=$(sis_sql -e "SHOW TABLES LIKE 'mdl\\_config'") || fail "cannot read database $DB_NAME"
+if [[ -n "$tables" ]]; then
+  current=$(sis_config sis_release) || fail "cannot read sis_release"
+fi
+if [[ -z "$current" ]]; then
+  log "no recorded release: nothing to back up"
+  exit 0
+fi
+if [[ "$current" == "$target" ]]; then
+  log "release $target unchanged: no backup needed"
+  exit 0
+fi
+rc=0
+sis_release_allowed "$current" "$target" || rc=$?
+if ((rc == 1)); then
+  fail "the database is on $current, newer than $target; Moodle cannot downgrade. Set TAG back to $current, or restore a backup of $target (sis-restore)"
+fi
+
+# A retry after a failed upgrade, or a restore of pre-<release>, leaves the database on the
+# release that backup holds: it is still the right one, and a second would add nothing.
+if [[ -f "/backups/$name/manifest.env" && "$(sis_manifest_get "/backups/$name/manifest.env" sis_release)" == "$current" ]]; then
+  log "$name already holds this database's release $current"
+  mark
+  exit 0
+fi
+
+log "upgrading $current to $target: backing up to $name first"
+sis-backup "$name" || fail "sis-backup did not finish (see above)"
+mark
+log "backed up to $name; the upgrade can start"

@@ -36,6 +36,10 @@ set -e
 
 case "$state" in
     0)
+        if ! sis-db.php upgrade-allowed; then
+            log "UPGRADE REFUSED: the database was not changed"
+            exit 1
+        fi
         log "existing site: upgrading"
         php "$M/admin/cli/maintenance.php" --enable
         if php "$M/admin/cli/uninstall_plugins.php" --purge-missing --run \

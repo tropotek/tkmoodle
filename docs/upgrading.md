@@ -1,13 +1,17 @@
 # Upgrading and recovery
 
-An upgrade is a new `TAG` and the same two commands as the install. Take a backup first: Moodle
-cannot move a database back to an older version.
+An upgrade is a new `TAG` and the same two commands as the install. Moodle cannot move a database
+back to an older version, so every upgrade takes a backup first, automatically
+([below](#automatic-backup-before-an-upgrade)).
 
 ## Back up
 
 ```bash
 docker compose run --rm dbtools sis-backup
 ```
+
+Upgrades take their own backup, so a manual one is for other times: before a risky change, or to
+copy a site elsewhere.
 
 The site stays up while it runs. The backup lands in `backups/<date-time>/`, or give it a name:
 `sis-backup before-5.3.0-4`. Add `--maintenance` to show Moodle's maintenance page while it runs,
@@ -38,10 +42,6 @@ docker compose pull && docker compose up -d
 docker compose logs -f app
 ```
 
-`pull` skips `dbtools`, which is tagged with the same `TAG`. A pinned `TAG` changes its image too.
-With `TAG=latest`, also run `docker compose pull dbtools`, or it stays on the release you first
-backed up with.
-
 On start the app container:
 
 1. turns on Moodle's maintenance mode, so visitors see a maintenance page and `/up` answers 503;
@@ -54,14 +54,48 @@ Admins' changes to settings are kept. An upgrade takes about a minute and a half
 Don't stop the containers while an upgrade runs. A stop waits up to 10 minutes for it to finish;
 killed halfway, it can leave the database half-upgraded.
 
+## Automatic backup before an upgrade
+
+Before `app` starts, the one-shot `preupgrade` service compares the release being started with
+the one the database last ran. When they differ, it backs up to `backups/pre-<release>/` (for
+example `pre-5.3.0-4`) and only then lets the upgrade start. Restarts on the same release and
+the first install skip it in a second or two.
+
+```bash
+docker compose logs preupgrade
+```
+
+- **It takes as long as a full backup**, so a large site upgrades more slowly. The site is down
+  from `up -d` until the upgrade finishes.
+- **Old `pre-*` backups stay.** Delete the ones you no longer need.
+- **A failed backup stops the upgrade.** `preupgrade` logs `pre-upgrade backup FAILED` and the
+  reason, `app` never starts, and the site stays down until you fix the cause and run
+  `docker compose up -d` again, or set `TAG` back.
+- **Escape hatch:** `SKIP_PREUPGRADE_BACKUP=1` in `.env` lets one upgrade through without a
+  backup. Both logs say `SKIPPING`. Remove it afterwards, or every later upgrade skips too.
+- **Retrying after a failed upgrade** reuses the `pre-<release>` backup already taken, because
+  the database is still on the release it holds.
+- `docker compose run app …` also starts `preupgrade`. Add `--no-deps` for one-off commands.
+
 ## A failed upgrade
 
 The log shows `sis: UPGRADE FAILED`, with Moodle's error just above it. The site stays in
 maintenance mode and keeps serving the maintenance page, and `/up` answers 503.
 
 - If a newer release fixes the cause, set its `TAG` and run `pull` and `up -d` again. Every start
-  retries the upgrade.
-- Otherwise, restore the backup and go back to the previous `TAG` (below).
+  retries the upgrade. That start takes another backup, of the half-upgraded database: to roll
+  back, use `pre-<the release that failed>`, not the newer one.
+- Otherwise, restore `pre-<the release that failed>` and set `TAG` back to the release it names
+  (below).
+
+Two other refusals stop the start:
+
+- `Moodle cannot downgrade`: `TAG` is older than the database. Set it back, or restore a backup
+  of that release.
+- `UPGRADE REFUSED` (in the `app` log): the app image is newer than the `dbtools` image that
+  checked the backup, usually from an `APP_IMAGE`/`DBTOOLS_IMAGE` override or a pull that only
+  half finished. Run `docker compose pull`, or make `DBTOOLS_IMAGE` match `APP_IMAGE`, and start
+  again.
 
 ## An incomplete first install
 

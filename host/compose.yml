@@ -9,6 +9,21 @@ x-app: &app
   env_file: .env
   restart: unless-stopped
 
+# Shared by the preupgrade and dbtools services. BACKUP_DIR must exist: compose refuses
+# a missing one rather than creating it as root.
+x-dbtools: &dbtools
+  image: ${DBTOOLS_IMAGE:-ghcr.io/tropotek/moodle-dbtools:${TAG:-latest}}
+  env_file: .env
+  environment:
+    SIS_TARGET_INSTITUTION: ${INSTITUTION:-demo}
+  volumes:
+    - moodledata:/moodledata
+    - type: bind
+      source: ${BACKUP_DIR:-./backups}
+      target: /backups
+      bind:
+        create_host_path: false
+
 services:
   app:
     <<: *app
@@ -33,6 +48,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      preupgrade:
+        condition: service_completed_successfully
 
   cron:
     <<: *app
@@ -46,27 +63,27 @@ services:
     depends_on:
       - app
 
-  # One-shot backup and restore tools; skipped by up and pull:
+  # Runs before app on every start. When the release changes, it backs up to
+  # backups/pre-<release> first; a failed backup stops the upgrade. See docs/upgrading.md.
+  preupgrade:
+    <<: *dbtools
+    command: ["sis-preupgrade"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Backup and restore by hand; up skips it, and pull fetches its image for preupgrade:
   #   docker compose run --rm dbtools sis-backup
   #   docker compose run --rm dbtools sis-restore <name>
-  # BACKUP_DIR must exist: compose refuses a missing one rather than creating it as root.
   dbtools:
-    image: ${DBTOOLS_IMAGE:-ghcr.io/tropotek/moodle-dbtools:${TAG:-latest}}
+    <<: *dbtools
     profiles: [tools]
-    env_file: .env
-    environment:
-      SIS_TARGET_INSTITUTION: ${INSTITUTION:-demo}
-    volumes:
-      - moodledata:/moodledata
-      - type: bind
-        source: ${BACKUP_DIR:-./backups}
-        target: /backups
-        bind:
-          create_host_path: false
 
-  # Bundled database, on by default. To use an external MySQL 8.4 server instead:
-  # delete this service, the depends_on under app, and the db volume below, then set
-  # DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASS in .env.
+  # Bundled database, on by default. To use an external MySQL 8.4 server instead: delete
+  # this service, the db entry under app's depends_on (keep preupgrade), preupgrade's
+  # depends_on, and the db volume below, then set DB_HOST, DB_PORT, DB_NAME, DB_USER and
+  # DB_PASS in .env.
   db:
     image: mysql:8.4
     restart: unless-stopped

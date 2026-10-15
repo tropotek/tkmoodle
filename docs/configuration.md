@@ -31,6 +31,7 @@ These have working defaults and are left out of `.env.example`:
 | `APP_IMAGE` | from `INSTITUTION` and `TAG` | run any image instead, e.g. a local build |
 | `BACKUP_DIR` | `./backups` | where `sis-backup` writes and `sis-restore` reads. The folder must exist; see [Backups](#backups) |
 | `DBTOOLS_IMAGE` | `ghcr.io/tropotek/moodle-dbtools:<TAG>` | run any backup tools image instead, e.g. a local build |
+| `SKIP_PREUPGRADE_BACKUP` | unset | `1` lets one upgrade start without its automatic backup ([Upgrading](upgrading.md#automatic-backup-before-an-upgrade)). Remove it afterwards |
 
 Fixed in the image: MySQL through `mysqli`, table prefix `mdl_`, data in `/moodledata`. Installing
 and updating plugins from Moodle's admin pages is turned off: plugins come only with an image.
@@ -38,7 +39,7 @@ and updating plugins from Moodle's admin pages is turned off: plugins come only 
 ## Backups
 
 `sis-backup` and `sis-restore` ([Upgrading](upgrading.md#back-up)) use the folder in
-`BACKUP_DIR`, `backups/` next to `compose.yml` by default. It must already exist: Docker would
+`BACKUP_DIR`, `backups/` next to `compose.yml` by default. It must already exist, for every `docker compose up`, since upgrades back up into it: Docker would
 otherwise create it owned by root, so compose stops with `bind source path does not exist`
 instead. Each backup gets the same owner as the folder.
 

@@ -12,6 +12,9 @@
 //   sis-db.php hold <role>     hold the named lock sis:<database>:<role> for as long as this
 //                             process lives, reconnecting if the connection drops. A
 //                             running app or cron holds one; sis-restore checks them
+//   sis-db.php upgrade-allowed exit 0 if the app may upgrade this database: same release, a
+//                             pre-upgrade backup recorded for this release, a dev image, or
+//                             SKIP_PREUPGRADE_BACKUP=1; 1 if not; 2 if it cannot be queried
 declare(strict_types=1);
 
 mysqli_report(MYSQLI_REPORT_OFF);
@@ -125,5 +128,40 @@ if ($cmd === 'hold') {
     }
 }
 
-fwrite(STDERR, "usage: sis-db.php wait <seconds> | installed | identify | hold <role>\n");
+if ($cmd === 'upgrade-allowed') {
+    $target = getenv('SIS_RELEASE') ?: 'dev';
+    if ($target === 'dev') {
+        exit(0);
+    }
+    $db = sis_db_connect($error);
+    if (!$db) {
+        fwrite(STDERR, "sis-db: $error\n");
+        exit(2);
+    }
+    $get = static function (string $name) use ($db): ?string {
+        $stmt = $db->prepare('SELECT value FROM mdl_config WHERE name = ?');
+        if (!$stmt || !$stmt->bind_param('s', $name) || !$stmt->execute()) {
+            fwrite(STDERR, "sis-db: cannot read $name: {$db->error}\n");
+            exit(2);
+        }
+        $value = null;
+        $stmt->bind_result($value);
+        return $stmt->fetch() ? (string)$value : null;
+    };
+    $current = $get('sis_release');
+    if ($current === $target || $get('sis_preupgrade_backup') === $target) {
+        exit(0);
+    }
+    if (getenv('SKIP_PREUPGRADE_BACKUP') === '1') {
+        fwrite(STDERR, "sis-db: SKIPPING the pre-upgrade backup check (SKIP_PREUPGRADE_BACKUP=1)\n");
+        exit(0);
+    }
+    $on = $current ?? 'an unrecorded release';
+    fwrite(STDERR, "sis-db: no pre-upgrade backup for release $target (the database is on $on); "
+        . "pull the dbtools image for $target (docker compose pull) and start again, "
+        . "or set SKIP_PREUPGRADE_BACKUP=1\n");
+    exit(1);
+}
+
+fwrite(STDERR, "usage: sis-db.php wait <seconds> | installed | identify | hold <role> | upgrade-allowed\n");
 exit(64);

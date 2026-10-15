@@ -26,8 +26,8 @@ mkdir "$work/config" "$work/backups"
 files=(-f "$work/compose.yml")
 db_host=db db_name=moodle db_user=moodle db_pass=smoke
 
-# Removes the bundled db service, app's depends_on and the db volume, as the docs tell an
-# external-database host to.
+# Follows the docs for an external database: removes the db service, the db entry under
+# app's depends_on, preupgrade's depends_on and the db volume.
 strip_bundled_db() {
   awk '
     /^services:/ { sec = "services" }
@@ -35,9 +35,11 @@ strip_bundled_db() {
     sec == "services" && /^  [a-z]+:$/ { svc = $1 }
     sec == "services" && svc == "db:" { next }
     sec == "volumes" && /^  db:$/ { next }
-    svc == "app:" && /^    depends_on:$/ { skipdep = 1; next }
+    svc == "app:" && /^      db:$/ { skipdb = 1; next }
+    skipdb && /^        / { next }
+    svc == "preupgrade:" && /^    depends_on:$/ { skipdep = 1; next }
     skipdep && /^      / { next }
-    { skipdep = 0; print }
+    { skipdb = 0; skipdep = 0; print }
   '
 }
 
@@ -60,6 +62,7 @@ SQL
   cat > "$work/compose.external.yml" <<EOF
 services:
   app: { networks: [default, extdb] }
+  preupgrade: { networks: [default, extdb] }
   cron: { networks: [default, extdb] }
   dbtools: { networks: [default, extdb] }
 networks:
@@ -285,7 +288,8 @@ pass "another institution's backup refused"
 
 copy_with newer sis_release 0.0.0-2
 refused "TAG=0.0.0-2" tools sis-restore newer
-refused "docker compose pull dbtools" tools sis-restore newer
+out=$(tools sis-restore newer 2>&1 || true)
+[[ "$out" != *"pull skips it"* ]] || fail "sis-restore still says pull skips dbtools"
 unchanged "newer release"
 pass "a newer release's backup refused, naming the TAG"
 
