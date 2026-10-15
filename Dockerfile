@@ -17,7 +17,7 @@ COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 ARG APP_UID=1000
 RUN useradd -m -u ${APP_UID} -g www-data moodle \
     && setcap CAP_NET_BIND_SERVICE=+eip /usr/local/bin/frankenphp \
-    && mkdir -p /moodledata /sis/bin /sis/www /sis/run /sis/institution /sis/config \
+    && mkdir -p /moodledata /sis/bin /sis/www /sis/run /sis/institution /sis/config /sis/host \
     && echo '{}' > /sis/institution/settings.json \
     && chown -R moodle:www-data /app /config /data/caddy /moodledata /sis
 ENV PATH="/sis/bin:${PATH}"
@@ -33,7 +33,7 @@ RUN composer install --no-dev --no-interaction --prefer-dist && composer clear-c
 # release: harness and internal plugins. Internal plugins are copied after
 # composer install, so no institution lock can remove them.
 FROM core AS release
-COPY --chown=moodle:www-data --chmod=0755 docker/sis-entrypoint docker/sis-cron docker/sis-settings.php docker/sis-db.php /sis/bin/
+COPY --chown=moodle:www-data --chmod=0755 docker/sis-entrypoint docker/sis-cron docker/sis-settings.php docker/sis-db.php dbtools/sis-host-check /sis/bin/
 COPY --chown=moodle:www-data docker/sis-settings-lib.php /sis/bin/
 COPY --chown=moodle:www-data docker/up.php /sis/www/up.php
 COPY --chown=moodle:www-data docker/config.php /app/moodle/config.php

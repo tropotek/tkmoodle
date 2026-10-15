@@ -91,6 +91,61 @@ check "preupgrade: refuses a bad SIS_ENV" contains "$refusal" "SIS_ENV must be o
 check "preupgrade: refuses it before touching the database" lacks "$refusal" "FAILED"
 rm -rf "$stub"
 
+# sis-host-check against a folder standing in for /sis/host.
+hc="$(dirname "$0")/../dbtools/sis-host-check"
+hm=$(mktemp -d)
+marks() { rm -rf "$hm"; mkdir "$hm"; local m; for m in "$@"; do touch "$hm/$m"; done; }
+hostcheck() { SIS_ENV=$1 sh "$hc" "${2:-$hm}" 2>&1; }
+hcstatus() { SIS_ENV=$1 sh "$hc" "${2:-$hm}" >/dev/null 2>&1; echo $?; }
+
+marks
+check "host: local, no marker" eq "$(hcstatus local)" 0
+check "host: local, no folder" eq "$(hcstatus local "$hm/none")" 0
+marks devserver
+check "host: development on devserver" eq "$(hcstatus development)" 0
+marks uat
+check "host: uat on uat" eq "$(hcstatus uat)" 0
+marks production README
+check "host: production on production, other files ignored" eq "$(hcstatus production)" 0
+marks README
+check "host: local ignores other files" eq "$(hcstatus local)" 0
+
+marks
+out=$(hostcheck production)
+check "host: production, no marker" contains "$out" "SIS_ENV=production, but this host has no environment marker"
+check "host: says which marker to make" contains "$out" "sudo touch /etc/tkmoodle/production"
+check "host: says to uncomment the line" contains "$out" "uncomment the hostmarker driver_opts line"
+check "host: says to drop a volume left from before" contains "$out" "docker volume rm <project>_hostmarker"
+check "host: never names the container path" lacks "$out" "$hm"
+check "host: refusal exits 1" eq "$(hcstatus production)" 1
+check "host: development wants devserver" contains "$(hostcheck development)" "sudo touch /etc/tkmoodle/devserver"
+check "host: production, no folder" contains "$(hostcheck production "$hm/none")" "has no environment marker"
+marks development
+check "host: a file named development isn't a marker" contains "$(hostcheck development)" "has no environment marker"
+
+marks uat
+check "host: production on a uat host" contains "$(hostcheck production)" \
+  "SIS_ENV=production expects /etc/tkmoodle/production, but this host is marked /etc/tkmoodle/uat"
+check "host: wrong marker exits 1" eq "$(hcstatus production)" 1
+marks uat production
+check "host: two markers" contains "$(hostcheck uat)" "/etc/tkmoodle has more than one environment marker (uat production)"
+marks
+mkdir "$hm/uat"
+check "host: a folder isn't a marker" contains "$(hostcheck uat)" "/etc/tkmoodle/uat is not a regular file"
+marks production
+check "host: local on a server" contains "$(hostcheck local)" \
+  "SIS_ENV=local, but this host is marked as a server by /etc/tkmoodle/production"
+check "host: refuses an unknown SIS_ENV" contains "$(hostcheck bogus)" "SIS_ENV must be one of"
+
+# Root reads any folder, so the unreadable case only shows for an ordinary user.
+if ((EUID != 0)); then
+  marks production
+  chmod 000 "$hm"
+  check "host: unreadable folder" contains "$(hostcheck production)" "/etc/tkmoodle is not readable by the site"
+  chmod 755 "$hm"
+fi
+rm -rf "$hm"
+
 echo
 if ((failures)); then echo "$failures failed"; exit 1; fi
 echo "all passed"

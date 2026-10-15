@@ -1,7 +1,7 @@
 #!/bin/sh
-# Container entrypoint. Checks SIS_ENV, renders the locked settings, then either boots
-# Moodle (CMD frankenphp: install or upgrade, then serve) or runs the given command
-# (sis-cron, php, sh, ...) with the same config.
+# Container entrypoint. Checks SIS_ENV and the host marker, renders the locked settings,
+# then either boots Moodle (CMD frankenphp: install or upgrade, then serve) or runs the
+# given command (sis-cron, php, sh, ...) with the same config.
 set -eu
 
 M=/app/moodle
@@ -12,6 +12,9 @@ case "${SIS_ENV:-}" in
     local|development|uat|production) ;;
     *) log "SIS_ENV must be one of local, development, uat, production (got '${SIS_ENV:-}')"; exit 1 ;;
 esac
+
+# A server's /etc/tkmoodle marker must agree with SIS_ENV.
+sis-host-check
 
 # Caddy's site address comes from WWWROOT: an https URL serves that hostname with a
 # Let's Encrypt certificate; anything else serves plain HTTP on port 80.

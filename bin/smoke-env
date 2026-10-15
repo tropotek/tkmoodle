@@ -16,6 +16,7 @@ docker build -q -t moodle-dbtools:smokeenv dbtools >/dev/null
 
 work="$(mktemp -d)"
 mkdir "$work/config" "$work/backups"
+mkdir "$work/hostmarker"
 cp host/compose.yml "$work/"
 cat > "$work/compose.test.yml" <<EOF
 services:
@@ -24,6 +25,9 @@ services:
     ports: ["$mailport:8025"]
   redis:
     image: redis:7.4.1-alpine
+volumes:
+  hostmarker:
+    driver_opts: {type: none, o: bind, device: $work/hostmarker}
 EOF
 cat > "$work/.env" <<EOF
 INSTITUTION=base
@@ -71,6 +75,8 @@ setenv() {
   dc up -d app >/dev/null
   wait_up
 }
+# marker [<name>]: leave only that marker in the host folder (none when no name is given).
+marker() { rm -f "$work/hostmarker"/*; if [[ $# -gt 0 ]]; then touch "$work/hostmarker/$1"; fi; }
 moodle_php() { dc exec -T app php; }
 mail_count() { curl -fsS "http://localhost:$mailport/api/v1/messages" | jq -r .total; }
 send_mail() {
@@ -112,12 +118,14 @@ send_mail
 pass "local: mail reaches Mailpit, curl reaches any host and port"
 
 # ---- development ----------------------------------------------------------------------
+marker devserver
 setenv SIS_ENV development
 send_mail
 [[ "$(mail_count)" == 1 ]] || fail "development sent mail ($(mail_count))"
 pass "development: no mail sent"
 
 # ---- production -------------------------------------------------------------------------
+marker production
 setenv SIS_ENV production
 [[ "$(curl_mailpit)" == blocked ]] || fail "production: curl reached a private host and port"
 [[ "$(smtp_forced)" == forced ]] || fail "production: SMTP_HOSTS set but smtphosts not forced"

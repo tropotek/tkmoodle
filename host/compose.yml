@@ -18,6 +18,7 @@ x-dbtools: &dbtools
     SIS_TARGET_INSTITUTION: ${INSTITUTION:-demo}
   volumes:
     - moodledata:/moodledata
+    - hostmarker:/sis/host:ro,nocopy
     - type: bind
       source: ${BACKUP_DIR:-./backups}
       target: /backups
@@ -35,6 +36,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - moodledata:/moodledata
+      - hostmarker:/sis/host:ro,nocopy
       - caddy_data:/data/caddy
       - caddy_config:/config/caddy
       # Optional settings.json that overrides the institution's; see README.md.
@@ -59,6 +61,7 @@ services:
       disable: true
     volumes:
       - moodledata:/moodledata
+      - hostmarker:/sis/host:ro,nocopy
       - ./config:/sis/config:ro
     depends_on:
       - app
@@ -109,3 +112,12 @@ volumes:
   caddy_data:
   caddy_config:
   db:
+  # Environment protection: the site refuses an SIS_ENV that disagrees with this host's marker
+  # in /etc/tkmoodle (devserver, uat or production). On a server, create the folder and its
+  # marker, then uncomment the driver_opts line; see
+  # https://tropotek.github.io/tkmoodle/configuration/#host-markers. If the site has already
+  # started, run docker compose down and docker volume rm <project>_hostmarker first. Left
+  # commented, nothing on the host is read and only SIS_ENV=local starts.
+  # nocopy: Docker would otherwise copy the image folder's owner onto /etc/tkmoodle.
+  hostmarker:
+    # driver_opts: {type: none, o: bind, device: /etc/tkmoodle}

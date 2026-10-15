@@ -11,6 +11,8 @@ case "${SIS_ENV:-}" in
   local|development|uat|production) ;;
   *) die "SIS_ENV must be one of local, development, uat, production (got '${SIS_ENV:-}'); set it in .env and run docker compose up -d again" ;;
 esac
+# Before the skip below, so skipping the backup never skips the host check.
+"$(dirname "$(readlink -f "$0")")/sis-host-check"
 
 target=$SIS_RELEASE
 name=pre-$target

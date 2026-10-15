@@ -72,6 +72,13 @@ EOF
 else
   cp host/compose.yml "$work/"
 fi
+mkdir "$work/hostmarker"
+cat > "$work/compose.hostmarker.yml" <<EOF
+volumes:
+  hostmarker:
+    driver_opts: {type: none, o: bind, device: $work/hostmarker}
+EOF
+files+=(-f "$work/compose.hostmarker.yml")
 
 cat > "$work/.env" <<EOF
 INSTITUTION=$inst
@@ -110,6 +117,8 @@ fail() { echo "smoke-backup: FAIL $*" >&2; dc logs --tail 40 app >&2 || true; ex
 pass() { echo "smoke-backup: ok   $*"; }
 # setenv <key> <value>: replace a .env line (dbtools reads .env on each run).
 setenv() { sed -i "/^$1=/d" "$work/.env"; echo "$1=$2" >> "$work/.env"; }
+# marker [<name>]: leave only that marker in the host folder (none when no name is given).
+marker() { rm -f "$work/hostmarker"/*; if [[ $# -gt 0 ]]; then touch "$work/hostmarker/$1"; fi; }
 
 tools() { dc run --rm -T dbtools "$@"; }
 sql() {
@@ -304,13 +313,25 @@ refused "no backup" tools sis-restore missing
 refused "BACKUP_DIR" tools sis-restore ../first
 pass "damaged, missing and path-like backups refused"
 
+# ---- a mis-marked host: backups still run, restores don't ----------------------------
+marker uat
+setenv SIS_ENV production
+tools sis-backup mismarked >/dev/null || fail "sis-backup refused on a mis-marked host"
+refused "SIS_ENV=production expects /etc/tkmoodle/production, but this host is marked /etc/tkmoodle/uat" \
+  tools sis-restore first
+unchanged "restore on a mis-marked host"
+pass "a mis-marked host can back up but not restore"
+
 # ---- --any-institution: only local and development may cross institutions --------
+marker production
 setenv SIS_ENV production
 refused "only works with SIS_ENV local or development" tools sis-restore --any-institution elsewhere
 unchanged "--any-institution on production"
+marker devserver
 setenv SIS_ENV development
 out=$(tools sis-restore --any-institution elsewhere 2>&1) || fail "--any-institution on development: $out"
 [[ "$out" == *"restoring elsewhere onto $inst (--any-institution)"* ]] || fail "no --any-institution log line: $out"
+marker
 setenv SIS_ENV local
 pass "--any-institution is refused on production and restores on development"
 
