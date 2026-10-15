@@ -13,7 +13,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-usage() { sed -n '6,8p' "$0" | sed 's/^# //' >&2; exit 64; }
+# By its path from the repo root: $0 may be relative to where it was started.
+usage() { sed -n '6,8p' bin/plugin | sed 's/^# //' >&2; exit 64; }
 fail() { echo "plugin: $*" >&2; exit 1; }
 
 [[ $# -ge 3 ]] || usage

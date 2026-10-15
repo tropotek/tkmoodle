@@ -19,11 +19,16 @@ usage() {
     d=$(basename "$d")
     [[ "$d" == _* ]] || names+=" $d"
   done
-  sed -n '4,11p' "$0" | sed 's/^# //' >&2
+  # By its path from the repo root: $0 may be relative to where it was started.
+  sed -n '4,11p' bin/smoke | sed 's/^# //' >&2
   echo "institutions:$names" >&2
   exit 64
 }
-is_suite() { [[ " ${suites[*]} all " == *" $1 "* ]]; }
+is_suite() {
+  local s
+  for s in "${suites[@]}" all; do [[ "$1" == "$s" ]] && return 0; done
+  return 1
+}
 
 for s in "${suites[@]}" all; do
   if [[ -d "institutions/$s" ]]; then

@@ -55,7 +55,7 @@ Inside the image, Moodle lives in `/app/moodle`: its command-line scripts are in
 | `bin/smoke env` | runs the base image with Mailpit and Redis, and checks mail on `local` and `development`, curl on `local` and `production`, SMTP locking, and Redis sessions surviving a restart | about 3 minutes |
 | `bin/smoke backup [<institution>]` | backs up a seeded site (default `demo`), checks every refusal, restores it | about 5 minutes |
 | `bin/smoke upgrade` | walks one site through install, upgrades, a failed backup, the escape hatch, the app's own check and a rollback | about 4 minutes |
-| `bin/smoke all [<institution>]` | the four in turn, stopping at the first failure | about 15 minutes |
+| `bin/smoke all [<institution>]` | the four in turn, stopping at the first failure | about 17 minutes |
 | `bin/check-lock` | every institution pins the same Moodle core as the base | instant |
 | `shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh tests/smoke/*.sh` | the shell scripts, as lint runs it | instant |
 | `bash tests/dbtools_test.sh` | the backup tools' helpers and `preupgrade`'s refusals, against a stub `mysql` | a few seconds |
