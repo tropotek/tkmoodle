@@ -49,6 +49,41 @@ and updating plugins from Moodle's admin pages is turned off: plugins come only 
 
 `development` exists so a copy of production can't email real people. `--any-institution` on
 `sis-restore` works only on `local` and `development` ([Upgrading](upgrading.md#restore-and-roll-back)).
+On a server, the environment is also checked against the host's marker: see [Host markers](#host-markers).
+
+## Host markers
+
+A server says which environment it is with one empty file in `/etc/tkmoodle`, and the site
+refuses to start when `SIS_ENV` disagrees. A `.env` copied from another server then stops the
+site, rather than running it with the wrong mail and restore rules.
+
+| `SIS_ENV` | Marker |
+|---|---|
+| `local` | none, and refused when one is present |
+| `development` | `/etc/tkmoodle/devserver` |
+| `uat` | `/etc/tkmoodle/uat` |
+| `production` | `/etc/tkmoodle/production` |
+
+- Exactly one marker. Two are refused, and so is a marker that is a folder. Other files in the
+  folder are ignored.
+- The folder must be mode 755 and the marker 644: the site reads them as an ordinary user.
+- Nothing creates the folder or the marker. A server gets both when it is set up
+  ([Installation](installation.md#install)).
+- The check is off until the `hostmarker` line in `compose.yml` is uncommented. With it
+  commented, nothing on the host is read and only `local` starts.
+- `app`, `cron`, the pre-upgrade backup and `sis-restore` check the marker. `sis-backup` doesn't,
+  so a mis-marked host can still take a backup.
+
+To turn it on for a site that has already run, remove its empty `hostmarker` volume first. The
+volume is named after `COMPOSE_PROJECT_NAME` (default `moodle`):
+
+```bash
+sudo install -d -m 755 /etc/tkmoodle && sudo touch /etc/tkmoodle/production
+docker compose down
+docker volume rm moodle_hostmarker
+sed -i 's|^    # driver_opts:|    driver_opts:|' compose.yml
+docker compose up -d
+```
 
 ## Sessions
 

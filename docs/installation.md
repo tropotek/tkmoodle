@@ -34,7 +34,19 @@ any code.
 
     [Configuration](configuration.md) lists every setting.
 
-3. Start it:
+3. On a server (`SIS_ENV` `development`, `uat` or `production`), mark the host with its
+   environment and turn the check on in `compose.yml`. A local machine skips this step.
+
+    ```bash
+    sudo install -d -m 755 /etc/tkmoodle
+    sudo touch /etc/tkmoodle/production    # devserver, uat or production
+    sed -i 's|^    # driver_opts:|    driver_opts:|' compose.yml
+    ```
+
+    The site refuses to start when `SIS_ENV` disagrees with the marker; see
+    [Host markers](configuration.md#host-markers).
+
+4. Start it:
 
     ```bash
     docker compose pull && docker compose up -d
@@ -44,7 +56,7 @@ any code.
     The first start installs Moodle and every plugin, which takes about two minutes. It is done when
     the log shows `sis: boot done`. Then `https://moodle.example.com/up` answers `ok`.
 
-4. Log in as `admin` with `ADMIN_PASS`. That account is created once. Changing `ADMIN_PASS`
+5. Log in as `admin` with `ADMIN_PASS`. That account is created once. Changing `ADMIN_PASS`
    later has no effect; change the password in Moodle.
 
 ## HTTPS
