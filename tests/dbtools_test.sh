@@ -76,7 +76,7 @@ exit 0
 STUB
 chmod +x "$stub/mysql"
 preupgrade() {
-  SIS_ENV=${SIS_ENV:-local} STUB_FAIL_ON=$1 SIS_RELEASE=0.0.0-2 DB_PASS=x PATH="$stub:$PATH" \
+  SIS_ENV=${SIS_ENV:-local} STUB_FAIL_ON=$1 SIS_RELEASE=0.0.0-2 DB_PASS=x PATH="$stub:$PATH" TMPDIR="$stub" \
     bash "$(dirname "$0")/../dbtools/sis-preupgrade" 2>&1
 }
 contains() { [[ "$1" == *"$2"* ]] || { echo "     got: $1"; return 1; }; }
