@@ -47,6 +47,18 @@ check('validate: list under core', throws(fn() => sis_settings_validate(['locked
 check('validate: list under a component', throws(fn() => sis_settings_validate(['locked' => ['plugins' => ['local_x' => ['a']]]], 'x'), 'must be an object'));
 check('validate: good data passes', !throws(fn() => sis_settings_validate(['defaults' => ['core' => ['timezone' => 'UTC'], 'plugins' => ['theme_boost_union' => ['x' => 1]]]], 'x')));
 
+// reserved keys: refused in either section when a file loads, before any ${VAR} is resolved
+$reserved = ['wwwroot', 'dataroot', 'prefix', 'admin', 'dbpass', 'dbhost', 'dirroot', 'libdir', 'tempdir',
+    'backuptempdir', 'cachedir', 'localcachedir', 'localrequestdir', 'themedir', 'langotherroot', 'langlocalroot',
+    'forced_plugin_settings', 'config_php_settings'];
+foreach ($reserved as $k) {
+    check("validate refuses reserved key: $k", throws(fn() => sis_settings_validate(['locked' => ['core' => [$k => 'x']]], 'f.json'), "locked.core.$k"));
+}
+check('validate refuses a reserved key in defaults', throws(fn() => sis_settings_validate(['defaults' => ['core' => ['wwwroot' => 'x']]], 'f.json'), 'defaults.core.wwwroot'));
+check('validate refuses a reserved key behind an unset ${VAR}', throws(fn() => sis_settings_validate(['locked' => ['core' => ['dbhost' => '${NOT_SET}']]], 'f.json'), 'locked.core.dbhost'));
+check('load refuses a reserved key, naming the file', throws(fn() => sis_settings_load(tmpjson('{"defaults":{"core":{"tempdir":"/x"}}}')), 'defaults.core.tempdir'));
+check('validate allows a plugin setting named like a reserved key', !throws(fn() => sis_settings_validate(['locked' => ['plugins' => ['local_x' => ['wwwroot' => 'x']]]], 'f.json')));
+
 // merge
 $m = sis_settings_merge(
     ['defaults' => ['core' => ['a' => '1', 'b' => '2']], 'locked' => ['core' => ['c' => '3']]],
@@ -78,7 +90,7 @@ eval('?>' . $php);
 check('render: core key set', $CFG->authpreventaccountcreation === '1');
 check('render escapes hostile values', $CFG->odd === $env['ODD']);
 check('render: plugin key forced', $CFG->forced_plugin_settings['local_sisexample']['remoteurl'] === 'https://x');
-foreach (['wwwroot', 'dataroot', 'prefix', 'admin', 'dbpass', 'dbhost'] as $k) {
+foreach (['wwwroot', 'dataroot', 'prefix', 'admin', 'dbpass', 'dbhost', 'tempdir', 'forced_plugin_settings'] as $k) {
     check("render refuses connection keys: $k", throws(fn() => sis_settings_render_locked(['core' => [$k => 'x'], 'plugins' => []]), $k));
 }
 

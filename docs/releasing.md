@@ -23,8 +23,13 @@ The release workflow then:
 
 1. builds the base image and pushes `ghcr.io/tropotek/moodle:5.3.0-4`;
 2. builds each institution on that exact base and pushes `ghcr.io/tropotek/moodle-<name>:5.3.0-4`
-   and `:latest`;
-3. builds the backup tools and pushes `ghcr.io/tropotek/moodle-dbtools:5.3.0-4` and `:latest`.
+   and, when it is the newest release so far, `:latest`;
+3. builds the backup tools and pushes `ghcr.io/tropotek/moodle-dbtools:5.3.0-4` and, when it is
+   the newest release so far, `:latest`.
+
+Re-running an older tag, or tagging a fix on an older core, publishes its version tag only:
+`:latest` stays on the newest release. Releases build one at a time, and GitHub keeps only one
+waiting behind the running one, so push the next tag after `gh run watch` finishes.
 
 Every image records its release, and institution images their name. A site stores both in its
 database on each start, and backups carry them.

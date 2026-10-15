@@ -17,9 +17,10 @@ fi
 
 docker image inspect "$image" >/dev/null 2>&1 || docker build --target dev -t "$image" .
 
+# The ${tty[@]+...} form keeps an empty list legal under set -u in bash 3.2 (macOS).
 tty=()
 [[ -t 0 && -t 1 ]] && tty=(-t)
-exec docker run --rm -i "${tty[@]}" \
+exec docker run --rm -i ${tty[@]+"${tty[@]}"} \
   -u "$(id -u):$(id -g)" \
   -e COMPOSER_HOME=/tmp/composer \
   ${COMPOSER_AUTH:+-e COMPOSER_AUTH} \

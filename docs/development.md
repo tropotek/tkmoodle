@@ -3,6 +3,12 @@
 Everything runs in Docker. The host needs Docker, git and `jq`; `php` and `shellcheck` are only for
 the test and lint commands below.
 
+On macOS, the `bin/smoke*` scripts need GNU tools, because they use `sed -i`, `stat -c`,
+`find -printf` and `date -d`. Run `brew install bash coreutils findutils gnu-sed`, then put
+Homebrew's GNU tools first on `PATH`:
+`PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$(brew --prefix)/opt/findutils/libexec/gnubin:$(brew --prefix)/opt/gnu-sed/libexec/gnubin:$PATH"`.
+The other `bin/` scripts run on macOS as they are.
+
 ## The local stack
 
 ```bash
@@ -47,7 +53,7 @@ Inside the image, Moodle lives in `/app/moodle`: its command-line scripts are in
 | `php tests/settings_test.php` | the settings renderer: validation, `${VAR}`, the rendered PHP, the command's exit codes | under a second |
 | `bin/smoke [<institution>]` | builds the images, installs a fresh site from `host/compose.yml`, then checks `/up`, the login page, cron, and that every locked plugin installed. Tears it all down after | about 2 minutes |
 | `bin/smoke-env` | runs the base image with Mailpit and Redis, and checks mail on `local` and `development`, curl on `local` and `production`, SMTP locking, and Redis sessions surviving a restart | about 3 minutes |
-| `bin/smoke-backup` | backs up a seeded site, checks every refusal, restores it; `SMOKE_EXTERNAL_DB=<mysql container>` runs it against an external MySQL | about 5 minutes |
+| `bin/smoke-backup` | backs up a seeded site, checks every refusal, restores it | about 5 minutes |
 | `bin/smoke-upgrade` | walks one site through install, upgrades, a failed backup, the escape hatch, the app's own check and a rollback | about 4 minutes |
 | `bin/check-lock` | every institution pins the same Moodle core as the base | instant |
 | `shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh` | the shell scripts, as lint runs it | instant |

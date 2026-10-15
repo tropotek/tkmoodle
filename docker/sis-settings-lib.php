@@ -10,9 +10,15 @@ final class sis_settings_error extends RuntimeException {
 const SIS_SETTINGS_SECTIONS = ['defaults', 'locked'];
 const SIS_SETTINGS_GROUPS = ['core', 'plugins'];
 
-/** Connection config comes from env only; a locked setting may not replace it. */
-function sis_settings_is_connection_key(string $key): bool {
-    return in_array($key, ['wwwroot', 'dataroot', 'prefix', 'admin'], true) || str_starts_with($key, 'db');
+/**
+ * Connection settings come from .env and paths from the image, and the renderer owns its two
+ * arrays: no settings file may set them.
+ */
+function sis_settings_is_reserved_key(string $key): bool {
+    return in_array($key, ['wwwroot', 'dataroot', 'prefix', 'admin',
+            'dirroot', 'libdir', 'tempdir', 'backuptempdir', 'cachedir', 'localcachedir', 'localrequestdir',
+            'themedir', 'langotherroot', 'langlocalroot', 'forced_plugin_settings', 'config_php_settings'], true)
+        || str_starts_with($key, 'db');
 }
 
 function sis_settings_load(string $path): array {
@@ -48,6 +54,11 @@ function sis_settings_validate(array $data, string $source): void {
             }
             if ($group === 'core') {
                 sis_settings_validate_leaves($values, "$source: $section.core");
+                foreach (array_keys($values) as $key) {
+                    if (sis_settings_is_reserved_key((string)$key)) {
+                        throw new sis_settings_error("$source: $section.core.$key: connection and path settings come from .env and the image, not settings.json");
+                    }
+                }
                 continue;
             }
             foreach ($values as $component => $leaves) {
@@ -125,8 +136,8 @@ function sis_settings_resolve(array $data, string $section, callable $getenv): a
 function sis_settings_render_locked(array $resolved): string {
     $php = "<?php\n// Rendered at boot from the \"locked\" settings. Do not edit: it is rewritten on every start.\n";
     foreach ($resolved['core'] as $key => $value) {
-        if (sis_settings_is_connection_key((string)$key)) {
-            throw new sis_settings_error("locked.core.$key: connection settings come from env, not settings.json");
+        if (sis_settings_is_reserved_key((string)$key)) {
+            throw new sis_settings_error("locked.core.$key: connection and path settings come from .env and the image, not settings.json");
         }
         $php .= '$CFG->' . $key . ' = ' . var_export($value, true) . ";\n";
     }

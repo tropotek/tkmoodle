@@ -5,7 +5,7 @@ on:
     tags: ["v*"]
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -26,10 +26,11 @@ jobs:
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       version: ${{ steps.ver.outputs.version }}
+      latest: ${{ steps.ver.outputs.latest }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Version from tag (v5.3.0-1 -> 5.3.0-1); its core must match composer.lock
+      - name: Version from tag (v5.3.0-1 -> 5.3.0-1); its core must match composer.lock; is it the newest release
         id: ver
         run: |
           v="${GITHUB_REF_NAME#v}"
@@ -42,18 +43,25 @@ jobs:
             echo "::error::tag says Moodle $core but composer.lock has $lock"; exit 1
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          # The newest release also becomes :latest. A checkout fetches only this tag, so ask
+          # the remote for them all; tags that aren't releases are ignored.
+          tags=$(git ls-remote --tags --refs origin 'refs/tags/v*' | sed 's#.*refs/tags/##')
+          newest=$({ printf '%s\n' "$tags"; echo "$GITHUB_REF_NAME"; } \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$' | sort -V | tail -n 1)
+          if [[ "$newest" == "$GITHUB_REF_NAME" ]]; then latest=true; else latest=false; fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Pull the FrankenPHP and Composer base images as a Docker Hub user, to avoid
       # anonymous rate limits. Skipped when the DOCKERHUB_* secrets aren't set.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         if: env.DOCKERHUB_USERNAME != ''
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -61,7 +69,7 @@ jobs:
 
       - name: Build and push base
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: release
@@ -84,23 +92,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # mysql:8.4 comes from Docker Hub; see the base job.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         if: env.DOCKERHUB_USERNAME != ''
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push dbtools
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: dbtools
           platforms: linux/amd64
@@ -108,7 +116,7 @@ jobs:
           build-args: SIS_RELEASE=${{ needs.base.outputs.version }}
           tags: |
             ${{ env.REGISTRY }}/moodle-dbtools:${{ needs.base.outputs.version }}
-            ${{ env.REGISTRY }}/moodle-dbtools:latest
+            ${{ needs.base.outputs.latest == 'true' && format('{0}/moodle-dbtools:latest', env.REGISTRY) || '' }}
           cache-from: type=gha,scope=dbtools
           cache-to: type=gha,scope=dbtools,mode=max
 
@@ -142,16 +150,16 @@ jobs:
       - name: check-lock
         run: bin/check-lock "${{ matrix.institution }}"
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.institution }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: institutions/${{ matrix.institution }}
           file: institutions/Dockerfile
@@ -163,6 +171,6 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/tropotek/tkmoodle
           tags: |
             ${{ env.REGISTRY }}/moodle-${{ matrix.institution }}:${{ needs.base.outputs.version }}
-            ${{ env.REGISTRY }}/moodle-${{ matrix.institution }}:latest
+            ${{ needs.base.outputs.latest == 'true' && format('{0}/moodle-{1}:latest', env.REGISTRY, matrix.institution) || '' }}
           cache-from: type=gha,scope=inst-${{ matrix.institution }}
           cache-to: type=gha,scope=inst-${{ matrix.institution }},mode=max

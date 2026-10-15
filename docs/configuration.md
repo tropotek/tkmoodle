@@ -141,9 +141,12 @@ Each institution's `settings.json` holds Moodle settings in two sections:
 - `${NAME}` is replaced with the server's `.env` value of `NAME`. When that is empty or missing, the
   setting is skipped, not set to empty. Keep secrets in `.env`, never in `settings.json`.
 - Removing a key from `locked` hands the setting back to the admin pages on the next start.
-- Connection settings (`wwwroot`, anything starting `db`, `prefix`, `admin`, `dataroot`) can't be
-  locked; they come from `.env`. A key that isn't a valid setting name stops the start with an
-  error naming it.
+- Connection settings (`wwwroot`, anything starting `db`, `prefix`, `admin`, `dataroot`) come
+  from `.env`, and paths (`dirroot`, `libdir`, `tempdir`, `backuptempdir`, `cachedir`,
+  `localcachedir`, `localrequestdir`, `themedir`, `langotherroot`, `langlocalroot`) from the
+  image. Neither can be set in `defaults` or `locked`, even through a `${NAME}` that is empty. A
+  settings file that tries stops the start, naming the file and the key.
+- A key that isn't a valid setting name stops the start with an error naming it.
 - Locking a setting skips the admin page's save action. Most settings need none, and the start
   clears Moodle's caches, but a setting that relies on its save action won't take effect when
   locked.
