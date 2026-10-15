@@ -125,7 +125,7 @@ relock() { snapshot; bin/composer "$inst" "$@"; }
 case "$cmd" in
   add)
     [[ $# -eq 2 ]] || usage
-    url="$1" ref="$2"
+    url="${1%/}" ref="$2"
     [[ "$url" =~ ^https://[^/]+/([^/]+)/[^/]+$ ]] \
       || fail "give the plugin's URL as https://<host>/<owner>/<repo>; deeper paths, such as GitLab subgroups, aren't supported"
     owner=$(tr '[:upper:]' '[:lower:]' <<<"${BASH_REMATCH[1]}")

@@ -41,8 +41,8 @@ bin/plugin <name> remove theme_boost_union
 and re-locks. Review the diff and commit it. If a step fails part-way, it puts
 `composer.json` and `composer.lock` back as they were.
 
-- The URL is `https://<host>/<owner>/<repo>` on any git host. The package is named
-  `<owner>/moodle-<component>`. Deeper paths, such as GitLab subgroups, aren't supported.
+- The URL is `https://<host>/<owner>/<repo>` on any git host. An inline entry's package is
+  named `<owner>/moodle-<component>`. Deeper paths, such as GitLab subgroups, aren't supported.
 - A plugin whose repository has a typed `composer.json` gets a `vcs` entry instead, required
   by its own package name. It takes a tag only, and the tag must read as a version, such as
   `2026081302` or `v5.5.1`.
