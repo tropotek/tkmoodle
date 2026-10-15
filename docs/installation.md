@@ -83,8 +83,7 @@ The site's data lives in Docker volumes named after the folder's project: `moodl
 
 The bundled `db` service suits a single server. To use an existing MySQL 8.4 server instead:
 
-1. In `compose.yml`, delete the `db` service, the `db` entry under `app`'s `depends_on` (keep
-   `preupgrade`), the `depends_on` block under `preupgrade`, and the `db` volume.
+1. In `.env`, remove `COMPOSE_PROFILES=db`. No database container is created then.
 2. In `.env`, set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASS`.
 
 The database must be empty for the first start and use `utf8mb4` with `utf8mb4_unicode_ci`.
