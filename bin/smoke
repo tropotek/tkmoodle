@@ -22,12 +22,14 @@ if [[ -z "$image" ]]; then
     image="moodle-$inst:smoke"
   fi
 fi
+docker build -t moodle-dbtools:smoke dbtools
 
 work="$(mktemp -d)"
 cp host/compose.yml "$work/"
-mkdir "$work/config"
+mkdir "$work/config" "$work/backups"
 cat > "$work/.env" <<EOF
 APP_IMAGE=$image
+DBTOOLS_IMAGE=moodle-dbtools:smoke
 WWWROOT=http://localhost:$port
 HTTP_PORT=$port
 HTTPS_PORT=$((port + 1))
@@ -61,6 +63,10 @@ echo "smoke: /up 200"
 code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/login/index.php")
 [[ "$code" == 200 ]] || fail "login page returned $code"
 echo "smoke: login page 200"
+
+[[ "$(dc ps -a --format '{{.ExitCode}}' preupgrade)" == 0 ]] || fail "preupgrade did not exit 0"
+[[ "$(dc logs --no-log-prefix preupgrade)" == *"no recorded release: nothing to back up"* ]] || fail "preupgrade: $(dc logs preupgrade)"
+echo "smoke: preupgrade passed a first install through"
 
 dc up -d cron
 sleep 15
