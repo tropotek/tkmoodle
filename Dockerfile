@@ -11,7 +11,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl git unzip ca-certificates locales aspell ghostscript \
     && localedef -i en_AU -c -f UTF-8 -A /usr/share/locale/locale.alias en_AU.UTF-8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN install-php-extensions intl zip soap gd mysqli pdo_mysql exif xsl opcache sockets tidy
+RUN install-php-extensions intl zip soap gd mysqli pdo_mysql exif xsl opcache sockets tidy redis
 COPY --from=composer /usr/bin/composer /usr/local/bin/composer
 
 ARG APP_UID=1000

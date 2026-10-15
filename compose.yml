@@ -6,6 +6,10 @@ name: moodle-dev
 x-env: &env
   WWWROOT: http://localhost:${DEV_PORT:-8300}
   SIS_ENV: local
+  SMTP_HOSTS: ${SMTP_HOSTS:-mailpit:1025}
+  # Moodle's default no-reply address, noreply@localhost here, is not a valid address.
+  SMTP_NOREPLY: ${SMTP_NOREPLY:-noreply@example.com}
+  REDIS_HOST: ${REDIS_HOST:-}
   DB_HOST: db
   DB_PASS: dev
   ADMIN_PASS: Dev-Admin-1
@@ -55,6 +59,12 @@ services:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -umoodle -pdev --silent"]
       interval: 5s
       retries: 30
+
+  # Catches every message the dev site sends; browse it on :8325.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    ports:
+      - "${MAILPIT_PORT:-8325}:8025"
 
 volumes:
   moodledata:

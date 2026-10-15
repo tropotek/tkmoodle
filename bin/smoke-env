@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# SIS_ENV smoke test. Runs the base image from host/compose.yml with Mailpit and Redis
+# beside it, then checks that local mails and reaches any port, development never mails,
+# production blocks private hosts, SMTP_* locks the SMTP settings, and REDIS_HOST moves
+# sessions into Redis. Tears everything down afterwards.
+# Usage: bin/smoke-env      SMOKE_PORT=8393  SMOKE_TIMEOUT=600  SMOKE_KEEP=1 (leave it running)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+port="${SMOKE_PORT:-8393}"
+mailport=$((port + 2))
+timeout="${SMOKE_TIMEOUT:-600}"
+
+docker build -q -t moodle:smokeenv . >/dev/null
+docker build -q -t moodle-dbtools:smokeenv dbtools >/dev/null
+
+work="$(mktemp -d)"
+mkdir "$work/config" "$work/backups"
+cp host/compose.yml "$work/"
+cat > "$work/compose.test.yml" <<EOF
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    ports: ["$mailport:8025"]
+  redis:
+    image: redis:7.4.1-alpine
+EOF
+cat > "$work/.env" <<EOF
+INSTITUTION=base
+APP_IMAGE=moodle:smokeenv
+DBTOOLS_IMAGE=moodle-dbtools:smokeenv
+SIS_ENV=local
+WWWROOT=http://localhost:$port
+HTTP_PORT=$port
+HTTPS_PORT=$((port + 1))
+DB_PASS=smoke
+ADMIN_PASS=Smoke-Test-1
+SMTP_HOSTS=mailpit:1025
+# Moodle's default no-reply address, noreply@localhost here, is not a valid address.
+SMTP_NOREPLY=noreply@example.com
+REDIS_HOST=redis
+EOF
+
+dc() { docker compose -p smokeenv --project-directory "$work" -f "$work/compose.yml" -f "$work/compose.test.yml" "$@"; }
+cleanup() {
+  if [[ "${SMOKE_KEEP:-}" == 1 ]]; then
+    echo "smoke-env: left running in $work"
+    return
+  fi
+  dc down -v --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+fail() { echo "smoke-env: FAIL $*" >&2; dc logs --tail 30 app >&2 || true; exit 1; }
+pass() { echo "smoke-env: ok   $*"; }
+
+wait_up() {
+  local deadline=$((SECONDS + timeout))
+  until curl -fsS -o /dev/null "http://localhost:$port/up"; do
+    (( SECONDS < deadline )) || fail "/up not 200 after ${timeout}s"
+    [[ "$(dc ps -a --format '{{.State}}' app)" != exited ]] || fail "app exited"
+    sleep 5
+  done
+}
+# setenv <key> [<value>]: set a .env line, or remove it when no value is given; then
+# recreate app with it.
+setenv() {
+  sed -i "/^$1=/d" "$work/.env"
+  if [[ $# -gt 1 ]]; then echo "$1=$2" >> "$work/.env"; fi
+  dc up -d app >/dev/null
+  wait_up
+}
+moodle_php() { dc exec -T app php; }
+mail_count() { curl -fsS "http://localhost:$mailport/api/v1/messages" | jq -r .total; }
+send_mail() {
+  moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+$admin = get_admin();
+email_to_user($admin, $admin, 'smoke-env', 'smoke-env body');
+PHP
+}
+curl_mailpit() {
+  moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+require_once($CFG->libdir . '/filelib.php');
+$c = new curl();
+$c->get('http://mailpit:8025/api/v1/info');
+echo (($c->get_info()['http_code'] ?? 0) == 200) ? "reached\n" : "blocked\n";
+PHP
+}
+smtp_forced() {
+  moodle_php <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require '/app/moodle/config.php';
+echo array_key_exists('smtphosts', $CFG->config_php_settings) ? "forced\n" : "free\n";
+PHP
+}
+
+dc up -d mailpit redis
+dc up -d app
+wait_up
+
+# ---- local --------------------------------------------------------------------------
+send_mail
+[[ "$(mail_count)" == 1 ]] || fail "local: the email did not reach Mailpit ($(mail_count))"
+[[ "$(curl_mailpit)" == reached ]] || fail "local: curl could not reach mailpit:8025"
+pass "local: mail reaches Mailpit, curl reaches any host and port"
+
+# ---- development ----------------------------------------------------------------------
+setenv SIS_ENV development
+send_mail
+[[ "$(mail_count)" == 1 ]] || fail "development sent mail ($(mail_count))"
+pass "development: no mail sent"
+
+# ---- production -------------------------------------------------------------------------
+setenv SIS_ENV production
+[[ "$(curl_mailpit)" == blocked ]] || fail "production: curl reached a private host and port"
+[[ "$(smtp_forced)" == forced ]] || fail "production: SMTP_HOSTS set but smtphosts not forced"
+pass "production: curl blocks private hosts; SMTP from .env is read-only"
+
+# ---- Redis sessions ------------------------------------------------------------------
+jar="$work/cookies"
+token=$(curl -fsS -c "$jar" "http://localhost:$port/login/index.php" \
+  | grep -o 'name="logintoken" value="[^"]*"' | sed 's/.*value="//; s/"$//') || true
+[[ -n "$token" ]] || fail "no logintoken on the login page"
+curl -fsS -b "$jar" -c "$jar" -o /dev/null --data-urlencode "logintoken=$token" \
+  -d username=admin --data-urlencode "password=Smoke-Test-1" "http://localhost:$port/login/index.php"
+profile_code() { curl -s -b "$jar" -o /dev/null -w '%{http_code}' "http://localhost:$port/user/profile.php"; }
+[[ "$(profile_code)" == 200 ]] || fail "login did not stick ($(profile_code))"
+keys=$(dc exec -T redis redis-cli --scan --pattern '*session_*' | wc -l)
+(( keys > 0 )) || fail "no session keys in Redis"
+files=$(dc exec -T app sh -c 'ls /moodledata/sessions 2>/dev/null | grep -c "^sess_" || true')
+[[ "$files" == 0 ]] || fail "$files session files in moodledata"
+pass "REDIS_HOST: sessions live in Redis ($keys keys), none in moodledata"
+dc restart app >/dev/null
+wait_up
+[[ "$(profile_code)" == 200 ]] || fail "login lost across an app restart ($(profile_code))"
+pass "a login survives an app restart"
+
+# ---- no SMTP_HOSTS ----------------------------------------------------------------------
+setenv SMTP_HOSTS
+[[ "$(smtp_forced)" == free ]] || fail "smtphosts still forced with SMTP_HOSTS empty"
+pass "without SMTP_HOSTS the admin sets SMTP"
+
+echo "smoke-env: PASS"
