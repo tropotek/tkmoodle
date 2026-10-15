@@ -1,0 +1,57 @@
+#!/bin/sh
+# Refuses to go on when this host's environment marker disagrees with SIS_ENV. A server
+# mounts its /etc/tkmoodle at /sis/host (the hostmarker volume in compose.yml), holding one
+# empty file: devserver, uat or production. Without the mount the folder is empty, which
+# only SIS_ENV=local accepts.
+# Usage: sis-host-check [<folder>]   (default /sis/host; the tests pass another)
+set -eu
+
+dir=${1:-/sis/host}
+host=/etc/tkmoodle
+
+refuse() {
+    for line in "$@"; do printf 'sis: %s\n' "$line" >&2; done
+    exit 1
+}
+
+case "${SIS_ENV:-}" in
+    local) want= ;;
+    development) want=devserver ;;
+    uat|production) want=$SIS_ENV ;;
+    *) refuse "SIS_ENV must be one of local, development, uat, production (got '${SIS_ENV:-}')" ;;
+esac
+
+# The site runs as an ordinary user, so a folder only root can read would look empty.
+if [ -e "$dir" ] && { [ ! -r "$dir" ] || [ ! -x "$dir" ]; }; then
+    refuse "$host is not readable by the site: it must be mode 755 and its marker 644" \
+        "  sudo chmod 755 $host && sudo chmod 644 $host/*"
+fi
+
+found=
+for m in devserver uat production; do
+    if [ -f "$dir/$m" ]; then
+        found="${found:+$found }$m"
+    elif [ -e "$dir/$m" ]; then
+        refuse "$host/$m is not a regular file. A marker is an empty file; this is usually a mkdir that should have been a touch. Replace it:" \
+            "  sudo rmdir $host/$m && sudo touch $host/$m"
+    fi
+done
+
+case "$found" in
+    *' '*) refuse "$host has more than one environment marker ($found); a host can't be two environments." \
+        "Remove the ones that don't apply: sudo rm $host/<name>" ;;
+esac
+
+if [ -z "$want" ]; then
+    [ -z "$found" ] || refuse "SIS_ENV=local, but this host is marked as a server by $host/$found." \
+        "Set SIS_ENV in .env to the environment it names or, if this host isn't a server, remove it: sudo rm $host/$found"
+    exit 0
+fi
+
+[ -n "$found" ] || refuse "SIS_ENV=$SIS_ENV, but this host has no environment marker. A server must say what it is:" \
+    "  sudo install -d -m 755 $host && sudo touch $host/$want" \
+    "then uncomment the hostmarker driver_opts line in compose.yml and run docker compose up -d again."
+
+[ "$found" = "$want" ] || refuse "SIS_ENV=$SIS_ENV expects $host/$want, but this host is marked $host/$found." \
+    "The marker says what this machine is: correct SIS_ENV in .env or, if the host really has been repurposed:" \
+    "  sudo rm $host/$found && sudo touch $host/$want"
