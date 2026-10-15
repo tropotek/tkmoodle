@@ -32,15 +32,11 @@ smoke_env() {
 # smoke_compose <file>: add a compose override the suite has written.
 smoke_compose() { compose_files+=(-f "$1"); }
 
-# smoke_bind_hostmarker: bind the hostmarker volume to a folder the suite fills with marker.
+# smoke_bind_hostmarker: point SIS_HOST_DIR at a folder the suite fills with marker. It adds a
+# line to .env, so call it after smoke_env.
 smoke_bind_hostmarker() {
   mkdir "$work/hostmarker"
-  cat > "$work/compose.hostmarker.yml" <<EOF
-volumes:
-  hostmarker:
-    driver_opts: {type: none, o: bind, device: $work/hostmarker}
-EOF
-  smoke_compose "$work/compose.hostmarker.yml"
+  echo "SIS_HOST_DIR=$work/hostmarker" >> "$work/.env"
 }
 
 # smoke_on_cleanup <function>: run it at the end, before the stack comes down.

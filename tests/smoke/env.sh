@@ -21,11 +21,11 @@ services:
     image: redis:7.4.1-alpine
 YML
 smoke_compose "$work/compose.test.yml"
-smoke_bind_hostmarker
 smoke_env INSTITUTION=base APP_IMAGE=moodle:smokeenv DBTOOLS_IMAGE=moodle-dbtools:smokeenv \
   SMTP_HOSTS=mailpit:1025 \
   "# Moodle's default no-reply address, noreply@localhost here, is not a valid address." \
   SMTP_NOREPLY=noreply@example.com REDIS_HOST=redis
+smoke_bind_hostmarker
 
 mail_count() { curl -fsS "http://localhost:$mailport/api/v1/messages" | jq -r .total; }
 send_mail() {

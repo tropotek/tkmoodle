@@ -19,7 +19,7 @@ smoke_build_dbtools moodle-dbtools:smoke
 
 smoke_init
 smoke_env "APP_IMAGE=$image" DBTOOLS_IMAGE=moodle-dbtools:smoke ${SMOKE_ENV:+"$SMOKE_ENV"}
-stop_hostcheck() { docker compose -p smokehost --project-directory "$work/hostcheck" down -v >/dev/null 2>&1 || true; }
+stop_hostcheck() { docker compose -p smokehost --project-directory "$work/hostcheck" down -v -t 1 >/dev/null 2>&1 || true; }
 smoke_on_cleanup stop_hostcheck
 
 # SIS_ENV is checked before anything else, in the app image and in preupgrade.
@@ -32,7 +32,7 @@ if out=$(docker run --rm -e SIS_ENV=bogus moodle-dbtools:smoke sis-preupgrade 2>
 [[ "$out" == *"SIS_ENV must be one of"* ]] || fail "preupgrade: $out"
 echo "smoke: SIS_ENV is checked"
 
-# Host markers: each case mounts a folder at /sis/host, as the hostmarker volume does.
+# Host markers: each case mounts a folder at /sis/host, as SIS_HOST_DIR does.
 hm="$work/hm"
 marks() { rm -rf "$hm"; mkdir "$hm"; local m; for m in "$@"; do touch "$hm/$m"; done; }
 in_host() { local env=$1; shift; docker run --rm -e SIS_ENV="$env" -v "$hm:/sis/host:ro" "$@" 2>&1; }
@@ -70,33 +70,47 @@ in_host development moodle-dbtools:smoke sis-restore >/dev/null || rc=$?
 [[ "$rc" == 64 ]] || fail "sis-restore did not reach its usage check on a devserver host (exit $rc)"
 echo "smoke: host markers are checked in both images"
 
-# The documented switch: uncomment the hostmarker line, here pointed at a test folder. Its own
-# project, so the main run's plain volume is never reused.
+# The documented switch, SIS_HOST_DIR in .env, here pointed at a test folder. Its own project
+# and an unedited copy of host/compose.yml, so the main run's volume is never reused.
 hw="$work/hostcheck"
-mkdir -p "$hw/config" "$hw/backups"
-cp "$work/.env" "$hw/"
-sed -e 's|^    # driver_opts:|    driver_opts:|' -e "s|device: /etc/tkmoodle}|device: $hw/marker}|" \
-  host/compose.yml > "$hw/compose.yml"
-grep -qF "    driver_opts: {type: none, o: bind, device: $hw/marker}" "$hw/compose.yml" \
-  || fail "the documented hostmarker edit did not apply to host/compose.yml"
-hdc() { docker compose -p smokehost --project-directory "$hw" "$@"; }
-mkdir "$hw/marker"
+mkdir -p "$hw/config" "$hw/backups" "$hw/marker"
 touch "$hw/marker/production"
-out=$(hdc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1) \
-  || fail "with the hostmarker line uncommented, a production host marked production was refused: $out"
-hdc down -v >/dev/null 2>&1 || true
-rm -rf "$hw/marker"
+cp host/compose.yml "$hw/"
+# up publishes app's ports, so this project takes its own, clear of the main site's.
+sed -e '/^SIS_ENV=/d' -e '/^HTTPS\{0,1\}_PORT=/d' "$work/.env" > "$hw/.env"
+printf '%s\n' SIS_ENV=production "HTTP_PORT=$((port + 2))" "HTTPS_PORT=$((port + 3))" >> "$hw/.env"
+hdc() { docker compose -p smokehost --project-directory "$hw" "$@"; }
+hostdir() { sed -i '/^SIS_HOST_DIR=/d' "$hw/.env"; echo "SIS_HOST_DIR=$1" >> "$hw/.env"; }
+# Unset: app is refused, though the host folder has the right marker.
+hdc up -d --no-deps app >/dev/null 2>&1 || fail "up -d app with no SIS_HOST_DIR"
+deadline=$((SECONDS + 60))
+until [[ "$(hdc logs app 2>&1)" == *"has no environment marker"* ]]; do
+  (( SECONDS < deadline )) || fail "app with no SIS_HOST_DIR was not refused: $(hdc logs app 2>&1 | tail -5)"
+  sleep 2
+done
+# Set after that refused start: up -d alone recreates app with the folder bound in.
+hostdir "$hw/marker"
+hdc up -d --no-deps app >/dev/null 2>&1 || fail "up -d app after setting SIS_HOST_DIR"
+mount=$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/sis/host"}}{{.Type}} {{.Source}}{{end}}{{end}}' \
+  "$(hdc ps -aq app)")
+[[ "$mount" == "bind $hw/marker" ]] || fail "up -d after setting SIS_HOST_DIR left /sis/host as: $mount"
+out=$(hdc run --rm --no-deps -T app true 2>&1) \
+  || fail "SIS_HOST_DIR set, a production host marked production was refused: $out"
+# A missing folder: Docker creates it empty, and the check refuses it.
+hostdir "$hw/missing"
 if out=$(hdc run --rm --no-deps -T app true 2>&1); then fail "started with the marker folder missing"; fi
-[[ "$out" == *"no such file or directory"* ]] || fail "missing marker folder: $out"
-hdc down -v >/dev/null 2>&1 || true
-echo "smoke: the hostmarker line binds the host folder, and a missing one stops the site"
+[[ "$out" == *"has no environment marker"* ]] || fail "missing marker folder: $out"
+# app now waits for a database that never starts, and its sh ignores SIGTERM: don't wait out
+# the 10-minute grace period.
+hdc down -v -t 1 >/dev/null 2>&1 || true
+echo "smoke: SIS_HOST_DIR binds the host folder, takes effect on up -d, and a missing one is refused"
 
-# Unedited compose.yml: the hostmarker volume is empty, so only local starts.
+# The main site's .env has no SIS_HOST_DIR: the hostmarker volume is empty, so only local starts.
 if out=$(dc run --rm --no-deps -T -e SIS_ENV=production app true 2>&1); then
-  fail "production started with the hostmarker line commented"
+  fail "production started with SIS_HOST_DIR unset"
 fi
-[[ "$out" == *"has no environment marker"* ]] || fail "unedited compose.yml, production: $out"
-echo "smoke: an unedited compose.yml refuses a server SIS_ENV"
+[[ "$out" == *"has no environment marker"* ]] || fail "SIS_HOST_DIR unset, production: $out"
+echo "smoke: with SIS_HOST_DIR unset, a server SIS_ENV is refused"
 
 dc up -d db app
 deadline=$((SECONDS + timeout))

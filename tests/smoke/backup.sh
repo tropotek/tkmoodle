@@ -13,8 +13,8 @@ smoke_build_institution "$inst" moodle:smokebk "moodle-$inst:smokebk"
 smoke_build_dbtools moodle-dbtools:smokebk "$rel"
 
 smoke_init
-smoke_bind_hostmarker
 smoke_env "INSTITUTION=$inst" "APP_IMAGE=moodle-$inst:smokebk" DBTOOLS_IMAGE=moodle-dbtools:smokebk
+smoke_bind_hostmarker
 # The outside BACKUP_DIR check leaves a folder owned by another uid; a container clears it.
 remove_outside() {
   [[ -n "${outside:-}" ]] || return 0
