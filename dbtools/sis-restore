@@ -25,7 +25,7 @@ target_institution=${SIS_TARGET_INSTITUTION:-demo}
 [[ "$b_institution" == "$target_institution" ]] \
   || die "backup $name is from institution $b_institution, but this host runs $target_institution (INSTITUTION in .env)"
 sis_release_allowed "$b_release" "$SIS_RELEASE" || case $? in
-  1) die "backup $name is from release $b_release, newer than this dbtools ($SIS_RELEASE); set TAG=$b_release in .env, then run: docker compose run --rm dbtools sis-restore $name. With TAG=latest, run docker compose pull dbtools first: pull skips it" ;;
+  1) die "backup $name is from release $b_release, newer than this dbtools ($SIS_RELEASE); set TAG=$b_release in .env and docker compose pull, then run: docker compose run --rm dbtools sis-restore $name" ;;
   *) die "backup $name is from a dev build, which can't be restored onto release $SIS_RELEASE" ;;
 esac
 

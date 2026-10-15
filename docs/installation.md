@@ -60,7 +60,8 @@ local testing.
 | `app` | installs or upgrades Moodle on start, then serves it. It reports healthy once booted |
 | `cron` | runs Moodle's cron every minute, from the same image |
 | `db` | MySQL 8.4. Optional; see below |
-| `dbtools` | backup and restore, run by hand ([Upgrading](upgrading.md#back-up)). `up` and `pull` skip it |
+| `preupgrade` | runs before `app` on each start, and backs up before a release upgrade ([Upgrading](upgrading.md#automatic-backup-before-an-upgrade)) |
+| `dbtools` | backup and restore, run by hand ([Upgrading](upgrading.md#back-up)). `up` skips it |
 
 The site's data lives in Docker volumes named after the folder's project: `moodle_moodledata`
 (uploaded files) and `moodle_db` (the database). `moodle_caddy_data` holds the certificates.
@@ -69,8 +70,8 @@ The site's data lives in Docker volumes named after the folder's project: `moodl
 
 The bundled `db` service suits a single server. To use an existing MySQL 8.4 server instead:
 
-1. In `compose.yml`, delete the `db` service, the `depends_on` block under `app`, and the `db`
-   volume.
+1. In `compose.yml`, delete the `db` service, the `db` entry under `app`'s `depends_on` (keep
+   `preupgrade`), the `depends_on` block under `preupgrade`, and the `db` volume.
 2. In `.env`, set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASS`.
 
 The database must be empty for the first start and use `utf8mb4` with `utf8mb4_unicode_ci`.

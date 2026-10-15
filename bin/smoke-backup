@@ -288,7 +288,8 @@ pass "another institution's backup refused"
 
 copy_with newer sis_release 0.0.0-2
 refused "TAG=0.0.0-2" tools sis-restore newer
-refused "docker compose pull dbtools" tools sis-restore newer
+out=$(tools sis-restore newer 2>&1 || true)
+[[ "$out" != *"pull skips it"* ]] || fail "sis-restore still says pull skips dbtools"
 unchanged "newer release"
 pass "a newer release's backup refused, naming the TAG"
 
