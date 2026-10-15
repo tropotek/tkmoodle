@@ -42,7 +42,9 @@ if ($cmd === 'wait') {
     $deadline = time() + (int)($argv[2] ?? 120);
     while (!sis_db_connect($error)) {
         if (time() >= $deadline) {
-            fwrite(STDERR, "sis-db: database not reachable: $error\n");
+            $hint = (getenv('DB_HOST') ?: 'db') === 'db'
+                ? '; the bundled database runs only when .env sets COMPOSE_PROFILES=db' : '';
+            fwrite(STDERR, "sis-db: database not reachable: $error$hint\n");
             exit(1);
         }
         sleep(2);

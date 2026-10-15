@@ -24,7 +24,7 @@ smoke_init() {
 smoke_env() {
   {
     printf '%s\n' SIS_ENV=local "WWWROOT=http://localhost:$port" "HTTP_PORT=$port" \
-      "HTTPS_PORT=$((port + 1))" DB_PASS=smoke ADMIN_PASS=Smoke-Test-1
+      "HTTPS_PORT=$((port + 1))" DB_PASS=smoke ADMIN_PASS=Smoke-Test-1 COMPOSE_PROFILES=db
     if (($#)); then printf '%s\n' "$@"; fi
   } > "$work/.env"
 }
