@@ -3,6 +3,12 @@
 Everything runs in Docker. The host needs Docker, git and `jq`; `php` and `shellcheck` are only for
 the test and lint commands below.
 
+On macOS, the `bin/smoke*` scripts need GNU tools, because they use `sed -i`, `stat -c`,
+`find -printf` and `date -d`. Run `brew install bash coreutils findutils gnu-sed`, then put
+Homebrew's GNU tools first on `PATH`:
+`PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$(brew --prefix)/opt/findutils/libexec/gnubin:$(brew --prefix)/opt/gnu-sed/libexec/gnubin:$PATH"`.
+The other `bin/` scripts run on macOS as they are.
+
 ## The local stack
 
 ```bash
