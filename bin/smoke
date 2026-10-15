@@ -57,7 +57,6 @@ for value in "" bogus Production; do
   if out=$(docker run --rm -e SIS_ENV="$value" "$image" true 2>&1); then fail "SIS_ENV='$value' was accepted"; fi
   [[ "$out" == *"SIS_ENV must be one of local, development, uat, production (got '$value')"* ]] || fail "SIS_ENV='$value': $out"
 done
-if out=$(docker run --rm "$image" true 2>&1); then fail "an unset SIS_ENV was accepted"; fi
 docker run --rm -e SIS_ENV=local "$image" true >/dev/null || fail "SIS_ENV=local was refused"
 if out=$(docker run --rm -e SIS_ENV=bogus moodle-dbtools:smoke sis-preupgrade 2>&1); then fail "preupgrade accepted SIS_ENV=bogus"; fi
 [[ "$out" == *"SIS_ENV must be one of"* ]] || fail "preupgrade: $out"

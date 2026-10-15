@@ -84,8 +84,11 @@ check "preupgrade: unreadable tables fail loudly" \
   contains "$(preupgrade 'SHOW TABLES')" "pre-upgrade backup FAILED: cannot read database"
 check "preupgrade: unreadable release fails loudly" \
   contains "$(preupgrade "name = 'sis_release'")" "pre-upgrade backup FAILED: cannot read sis_release"
-check "preupgrade: refuses a bad SIS_ENV before touching the database" \
-  contains "$(SIS_ENV=bogus preupgrade x)" "SIS_ENV must be one of"
+# Every query fails here, so any database access before the check would print FAILED.
+refusal=$(SIS_ENV=bogus preupgrade 'S')
+lacks() { [[ "$1" != *"$2"* ]] || { echo "     got: $1"; return 1; }; }
+check "preupgrade: refuses a bad SIS_ENV" contains "$refusal" "SIS_ENV must be one of"
+check "preupgrade: refuses it before touching the database" lacks "$refusal" "FAILED"
 rm -rf "$stub"
 
 echo

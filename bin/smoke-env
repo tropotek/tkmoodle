@@ -102,8 +102,7 @@ echo array_key_exists('smtphosts', $CFG->config_php_settings) ? "forced\n" : "fr
 PHP
 }
 
-dc up -d mailpit redis
-dc up -d app
+dc up -d mailpit redis app
 wait_up
 
 # ---- local --------------------------------------------------------------------------
