@@ -50,6 +50,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
       preupgrade:
         condition: service_completed_successfully
 
@@ -75,6 +76,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
 
   # Backup and restore by hand; up skips it, and pull fetches its image for preupgrade:
   #   docker compose run --rm dbtools sis-backup
@@ -83,12 +85,11 @@ services:
     <<: *dbtools
     profiles: [tools]
 
-  # Bundled database, on by default. To use an external MySQL 8.4 server instead: delete
-  # this service, the db entry under app's depends_on (keep preupgrade), preupgrade's
-  # depends_on, and the db volume below, then set DB_HOST, DB_PORT, DB_NAME, DB_USER and
-  # DB_PASS in .env.
+  # The bundled MySQL 8.4 database. It runs only when .env sets COMPOSE_PROFILES=db; for an
+  # external server, leave that out and set DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASS.
   db:
     image: mysql:8.4
+    profiles: [db]
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${DB_NAME:-moodle}
