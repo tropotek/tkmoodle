@@ -35,12 +35,12 @@ any code.
     [Configuration](configuration.md) lists every setting.
 
 3. On a server (`SIS_ENV` `development`, `uat` or `production`), mark the host with its
-   environment and turn the check on in `compose.yml`. A local machine skips this step.
+   environment and point `.env` at it. A local machine skips this step.
 
     ```bash
     sudo install -d -m 755 /etc/tkmoodle
     sudo touch /etc/tkmoodle/production    # devserver, uat or production
-    sed -i 's|^    # driver_opts:|    driver_opts:|' compose.yml
+    echo SIS_HOST_DIR=/etc/tkmoodle >> .env
     ```
 
     The site refuses to start when `SIS_ENV` disagrees with the marker; see
