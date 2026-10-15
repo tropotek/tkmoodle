@@ -3,7 +3,7 @@
 Everything runs in Docker. The host needs Docker, git and `jq`; `php` and `shellcheck` are only for
 the test and lint commands below.
 
-On macOS, the `bin/smoke*` scripts need GNU tools, because they use `sed -i`, `stat -c`,
+On macOS, the `bin/smoke` suites need GNU tools, because they use `sed -i`, `stat -c`,
 `find -printf` and `date -d`. Run `brew install bash coreutils findutils gnu-sed`, then put
 Homebrew's GNU tools first on `PATH`:
 `PATH="$(brew --prefix)/opt/coreutils/libexec/gnubin:$(brew --prefix)/opt/findutils/libexec/gnubin:$(brew --prefix)/opt/gnu-sed/libexec/gnubin:$PATH"`.
@@ -51,17 +51,21 @@ Inside the image, Moodle lives in `/app/moodle`: its command-line scripts are in
 | Command | Checks | Time |
 |---|---|---|
 | `php tests/settings_test.php` | the settings renderer: validation, `${VAR}`, the rendered PHP, the command's exit codes | under a second |
-| `bin/smoke [<institution>]` | builds the images, installs a fresh site from `host/compose.yml`, then checks `/up`, the login page, cron, and that every locked plugin installed. Tears it all down after | about 2 minutes |
-| `bin/smoke-env` | runs the base image with Mailpit and Redis, and checks mail on `local` and `development`, curl on `local` and `production`, SMTP locking, and Redis sessions surviving a restart | about 3 minutes |
-| `bin/smoke-backup` | backs up a seeded site, checks every refusal, restores it | about 5 minutes |
-| `bin/smoke-upgrade` | walks one site through install, upgrades, a failed backup, the escape hatch, the app's own check and a rollback | about 4 minutes |
+| `bin/smoke [<institution>]` | the `install` suite: builds the images, installs a fresh site from `host/compose.yml`, then checks `/up`, the login page, cron, and that every locked plugin installed. Tears it all down after | about 2 minutes |
+| `bin/smoke env` | runs the base image with Mailpit and Redis, and checks mail on `local` and `development`, curl on `local` and `production`, SMTP locking, and Redis sessions surviving a restart | about 3 minutes |
+| `bin/smoke backup [<institution>]` | backs up a seeded site (default `demo`), checks every refusal, restores it | about 5 minutes |
+| `bin/smoke upgrade` | walks one site through install, upgrades, a failed backup, the escape hatch, the app's own check and a rollback | about 4 minutes |
+| `bin/smoke all [<institution>]` | the four in turn, stopping at the first failure | about 15 minutes |
 | `bin/check-lock` | every institution pins the same Moodle core as the base | instant |
-| `shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh` | the shell scripts, as lint runs it | instant |
+| `shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh tests/smoke/*.sh` | the shell scripts, as lint runs it | instant |
 | `bash tests/dbtools_test.sh` | the backup tools' helpers and `preupgrade`'s refusals, against a stub `mysql` | a few seconds |
 
-Run `bin/smoke` before every release. It takes `SMOKE_PORT` (default 8399), `SMOKE_KEEP=1` (leave
-the site running and print how to stop it) and `SMOKE_ENV` (extra `.env` lines). Pull requests run
-only the lint checks in CI; tests and smoke runs stay local.
+Run `bin/smoke` before every release. Every suite takes `SMOKE_PORT` (each has its own default,
+so suites can run side by side), `SMOKE_TIMEOUT` and `SMOKE_KEEP=1` (leave the site running and
+print how to stop it; not with `all`). `install` also takes `SMOKE_ENV` (extra `.env` lines) and
+`SMOKE_IMAGE` (an app image to use instead of building). The suites live in `tests/smoke/` and
+share `tests/smoke/lib.sh`. Pull requests run only the lint checks in CI; tests and smoke runs
+stay local.
 
 ## Layout of the harness
 
