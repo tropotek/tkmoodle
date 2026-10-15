@@ -7,6 +7,12 @@
 set -euo pipefail
 # shellcheck source=dbtools/sis-dbtools-lib.sh
 . "$(dirname "$(readlink -f "$0")")/sis-dbtools-lib.sh"
+case "${SIS_ENV:-}" in
+  local|development|uat|production) ;;
+  *) die "SIS_ENV must be one of local, development, uat, production (got '${SIS_ENV:-}'); set it in .env" ;;
+esac
+# Restoring onto the wrong host is what the marker guards hardest: checked before anything else.
+"$(dirname "$(readlink -f "$0")")/sis-host-check"
 
 any=0
 if [[ "${1:-}" == --any-institution ]]; then any=1; shift; fi

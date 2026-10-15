@@ -45,7 +45,7 @@ cleanup() {
     echo "smoke: left running; stop with: docker compose -p smoke --project-directory $work down -v"
   else
     dc down -v --remove-orphans >/dev/null 2>&1 || true
-    rm -rf "$work"
+    chmod -R u+rwx "$work" 2>/dev/null || true; rm -rf "$work"
   fi
 }
 trap cleanup EXIT
@@ -61,6 +61,44 @@ docker run --rm -e SIS_ENV=local "$image" true >/dev/null || fail "SIS_ENV=local
 if out=$(docker run --rm -e SIS_ENV=bogus moodle-dbtools:smoke sis-preupgrade 2>&1); then fail "preupgrade accepted SIS_ENV=bogus"; fi
 [[ "$out" == *"SIS_ENV must be one of"* ]] || fail "preupgrade: $out"
 echo "smoke: SIS_ENV is checked"
+
+# Host markers: each case mounts a folder at /sis/host, as the hostmarker volume does.
+hm="$work/hm"
+marks() { rm -rf "$hm"; mkdir "$hm"; local m; for m in "$@"; do touch "$hm/$m"; done; }
+in_host() { local env=$1; shift; docker run --rm -e SIS_ENV="$env" -v "$hm:/sis/host:ro" "$@" 2>&1; }
+refused_by() {  # refused_by <text> <SIS_ENV> <docker run args…>
+  local want=$1 out
+  shift
+  if out=$(in_host "$@"); then fail "not refused: $*"; fi
+  [[ "$out" == *"$want"* ]] || fail "refusal of '$*' lacks '$want'; got: $out"
+}
+wrong="SIS_ENV=production expects /etc/tkmoodle/production, but this host is marked /etc/tkmoodle/uat"
+marks uat
+refused_by "$wrong" production "$image" true
+marks
+refused_by "has no environment marker" production "$image" true
+marks uat production
+refused_by "has more than one environment marker" production "$image" true
+marks
+mkdir "$hm/uat"
+refused_by "/etc/tkmoodle/uat is not a regular file" uat "$image" true
+marks uat
+refused_by "$wrong" production -e SKIP_PREUPGRADE_BACKUP=1 moodle-dbtools:smoke sis-preupgrade
+refused_by "$wrong" production moodle-dbtools:smoke sis-restore first
+refused_by "SIS_ENV must be one of" bogus moodle-dbtools:smoke sis-restore first
+marks production
+refused_by "SIS_ENV=local, but this host is marked as a server" local "$image" true
+chmod 000 "$hm"
+refused_by "is not readable by the site" production "$image" true
+chmod 755 "$hm"
+marks devserver
+in_host development "$image" true >/dev/null || fail "app refused development on a devserver host"
+in_host development -e SKIP_PREUPGRADE_BACKUP=1 moodle-dbtools:smoke sis-preupgrade >/dev/null \
+  || fail "preupgrade refused development on a devserver host"
+rc=0
+in_host development moodle-dbtools:smoke sis-restore >/dev/null || rc=$?
+[[ "$rc" == 64 ]] || fail "sis-restore did not reach its usage check on a devserver host (exit $rc)"
+echo "smoke: host markers are checked in both images"
 
 dc up -d db app
 deadline=$((SECONDS + timeout))
