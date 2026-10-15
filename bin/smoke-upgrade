@@ -139,7 +139,31 @@ sed -i '/^SKIP_PREUPGRADE_BACKUP=/d' "$work/.env"
 rmdir "$work/backups/.pre-0.0.0-3.partial"
 pass "SKIP_PREUPGRADE_BACKUP=1 lets the upgrade through, logged"
 
-# APP CHECK (Task 2)
+# ---- 5b. the app logged the skip too --------------------------------------------------
+[[ "$(app_log_since "$t")" == *SKIPPING* ]] || fail "app did not log the skip"
+pass "the app logs the skipped check too"
+
+# ---- 6. app newer than dbtools: the app's own check refuses -------------------------
+release 4 3
+t=$(since)
+dc up -d app >/dev/null 2>&1 || fail "preupgrade should pass when dbtools matches the database"
+[[ "$(pre_log_since "$t")" == *"release 0.0.0-3 unchanged"* ]] || fail "preupgrade: $(pre_log_since "$t")"
+deadline=$((SECONDS + 120))
+until [[ "$(app_log_since "$t")" == *"UPGRADE REFUSED"* ]]; do
+  (( SECONDS < deadline )) || fail "app did not refuse: $(app_log_since "$t" | tail -n 5)"
+  sleep 3
+done
+[[ "$(app_log_since "$t")" == *"no pre-upgrade backup for release 0.0.0-4"* ]] || fail "refusal lacks its reason"
+[[ "$(db_release)" == 0.0.0-3 ]] || fail "release changed: $(db_release)"
+dc stop app >/dev/null
+pass "an app newer than dbtools refuses to upgrade, and says why"
+
+# The dev stack has no preupgrade: a dev image must not refuse a release database.
+dc run --rm --no-deps -T -e SIS_RELEASE=dev app sis-db.php upgrade-allowed || fail "dev image refused a release database"
+refused_rc=0
+dc run --rm --no-deps -T app sis-db.php upgrade-allowed >/dev/null 2>&1 || refused_rc=$?
+[[ "$refused_rc" == 1 ]] || fail "upgrade-allowed exit $refused_rc, expected 1"
+pass "a dev image passes the check; a release image without a backup gets exit 1"
 
 # ---- 7. a pre-<r> folder holding another release blocks the upgrade; removing it recovers
 cp -a "$work/backups/pre-0.0.0-2" "$work/backups/pre-0.0.0-4"
