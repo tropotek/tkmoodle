@@ -119,8 +119,8 @@ marks
 out=$(hostcheck production)
 check "host: production, no marker" contains "$out" "SIS_ENV=production, but this host has no environment marker"
 check "host: says which marker to make" contains "$out" "sudo touch /etc/tkmoodle/production"
-check "host: says to uncomment the line" contains "$out" "uncomment the hostmarker driver_opts line"
-check "host: says to drop a volume left from before" contains "$out" "docker volume rm <project>_hostmarker"
+check "host: says to set SIS_HOST_DIR" contains "$out" "set SIS_HOST_DIR=/etc/tkmoodle in .env"
+check "host: never says to edit compose.yml" lacks "$out" "compose.yml"
 check "host: never names the container path" lacks "$out" "$hm"
 check "host: refusal exits 1" eq "$(hcstatus production)" 1
 check "host: development wants devserver" contains "$(hostcheck development)" "sudo touch /etc/tkmoodle/devserver"
