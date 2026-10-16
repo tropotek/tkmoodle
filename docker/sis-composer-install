@@ -1,0 +1,29 @@
+#!/bin/sh
+# Runs `composer install` in /app for an image build, then removes what a running site
+# never needs, all in one RUN so none of it reaches an image layer:
+#   - git and unzip, which Composer needs for plugins pulled from Git repositories;
+#   - unit tests, Markdown, JavaScript source maps and Git metadata.
+# Moodle loads some of tests/ outside a test run, so these stay: tests/classes
+# (autoloaded), tests/fixtures (the Ghostscript and document converter checks),
+# tests/generator and tests/behat (the admin test-course and scenario generators).
+# Runs as root; Composer itself runs as the moodle user, who owns /app.
+set -eu
+
+apt-get update
+apt-get install -y --no-install-recommends git unzip
+
+HOME=/home/moodle runuser -u moodle -- composer install --no-dev --no-interaction --prefer-dist -d /app
+HOME=/home/moodle runuser -u moodle -- composer clear-cache
+
+find /app -type d -name tests -not -path '*/classes/*' -prune -print |
+  while IFS= read -r dir; do
+    find "$dir" -mindepth 1 -maxdepth 1 \
+      -not -name classes -not -name fixtures -not -name generator -not -name behat \
+      -exec rm -rf {} +
+  done
+find /app \( -name .git -o -name .github \) -prune -exec rm -rf {} +
+find /app -type f \( -name '*.md' -o -name '*.map' -o -name '.git*' \) -delete
+
+apt-get purge -y --auto-remove git unzip
+apt-get clean
+rm -rf /var/lib/apt/lists/*

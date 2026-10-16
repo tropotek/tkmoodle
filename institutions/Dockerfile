@@ -11,5 +11,7 @@ ARG SIS_INSTITUTION
 ENV SIS_INSTITUTION=${SIS_INSTITUTION}
 COPY --chown=moodle:www-data composer.json composer.lock /app/
 COPY --chown=moodle:www-data settings.json /sis/institution/settings.json
+USER root
 RUN test -n "$SIS_INSTITUTION" || { echo "SIS_INSTITUTION build arg is required" >&2; exit 1; }; \
-    composer install --no-dev --no-interaction --prefer-dist && composer clear-cache
+    sis-composer-install
+USER moodle
