@@ -5,6 +5,7 @@
 #     --build-arg SIS_INSTITUTION=<name> institutions/<name>
 # BASE_IMAGE has no default on purpose (the check directive above silences the
 # warning): every build names the base it builds on. SIS_INSTITUTION is required too.
+# Needs BuildKit (the default builder) and a base image that has sis-composer-install.
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 ARG SIS_INSTITUTION

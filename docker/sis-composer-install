@@ -2,32 +2,53 @@
 # Runs `composer install` in /app for an image build, then removes what a running site
 # never needs, all in one RUN so none of it reaches an image layer:
 #   - git and unzip, which Composer needs for plugins pulled from Git repositories;
-#   - unit tests, Markdown, JavaScript source maps and Git metadata.
+#     only when this script installed them, so the dev image keeps its own;
+#   - unit tests, Markdown other than licences, source maps outside amd/build, and Git
+#     metadata.
 # Moodle loads some of tests/ outside a test run, so these stay: tests/classes
 # (autoloaded), tests/fixtures (the Ghostscript and document converter checks),
 # tests/generator and tests/behat (the admin test-course and scenario generators).
+# amd/build maps stay because, with JavaScript caching off, Moodle serves the minified
+# build only when its map exists, and otherwise the ES module source browsers can't load.
 # Runs as root; Composer itself runs as the moodle user, who owns /app. Its download
 # cache is /var/cache/composer, which the Dockerfiles mount as a build cache so it stays
-# out of the image and survives between builds.
+# out of the image and survives between local builds.
 set -eu
 export COMPOSER_CACHE_DIR=/var/cache/composer
 mkdir -p "$COMPOSER_CACHE_DIR"
-chown moodle "$COMPOSER_CACHE_DIR"
+chown -R moodle "$COMPOSER_CACHE_DIR"
 
-apt-get update
-apt-get install -y --no-install-recommends git unzip
+tools=
+for pkg in git unzip; do
+  dpkg -s "$pkg" >/dev/null 2>&1 || tools="$tools $pkg"
+done
+if [ -n "$tools" ]; then
+  apt-get update
+  # shellcheck disable=SC2086 # one word per package
+  apt-get install -y --no-install-recommends $tools
+fi
 
 HOME=/home/moodle runuser -u moodle -- composer install --no-dev --no-interaction --prefer-dist -d /app
 
-find /app -type d -name tests -not -path '*/classes/*' -prune -print |
-  while IFS= read -r dir; do
-    find "$dir" -mindepth 1 -maxdepth 1 \
-      -not -name classes -not -name fixtures -not -name generator -not -name behat \
-      -exec rm -rf {} +
-  done
+# shellcheck disable=SC2016 # the variables belong to the inner shell
+find /app -type d -name tests -not -path '*/classes/*' -prune -exec sh -c '
+  for d; do
+    for f in "$d"/* "$d"/.[!.]*; do
+      case ${f##*/} in
+        classes|fixtures|generator|behat) ;;
+        *) rm -rf "$f" ;;
+      esac
+    done
+  done' sh {} +
 find /app \( -name .git -o -name .github \) -prune -exec rm -rf {} +
-find /app -type f \( -name '*.md' -o -name '*.map' -o -name '.git*' \) -delete
+find /app -type f \( \
+    \( -name '*.md' -not -iname 'licen[cs]e*' -not -iname 'copying*' \) \
+    -o \( -name '*.map' -not -path '*/amd/build/*' \) \
+    -o -name '.git*' \) -delete
 
-apt-get purge -y --auto-remove git unzip
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+if [ -n "$tools" ]; then
+  # shellcheck disable=SC2086 # one word per package
+  apt-get purge -y --auto-remove $tools
+  apt-get clean
+  rm -rf /var/lib/apt/lists/*
+fi
