@@ -24,20 +24,21 @@ RUN useradd -m -u ${APP_UID} -g www-data moodle \
     && chown -R moodle:www-data /app /config /data/caddy /moodledata /sis
 ENV PATH="/sis/bin:${PATH}"
 COPY --chmod=0755 docker/sis-composer-install /sis/bin/
-COPY docker/php.ini /usr/local/etc/php/conf.d/zz-sis.ini
-COPY docker/Caddyfile /etc/caddy/Caddyfile
 USER moodle
 
 # core: Moodle from the root lock.
 FROM runtime AS core
 COPY --chown=moodle:www-data composer.json composer.lock /app/
 USER root
-RUN sis-composer-install
+RUN --mount=type=cache,id=composer,target=/var/cache/composer sis-composer-install
 USER moodle
 
-# release: harness and internal plugins. Internal plugins are copied after
-# composer install, so no institution lock can remove them.
+# release: config, harness and internal plugins. All of it comes after composer install,
+# so editing any of it reuses the Moodle layer, and no institution lock can remove the
+# internal plugins.
 FROM core AS release
+COPY --link docker/php.ini /usr/local/etc/php/conf.d/zz-sis.ini
+COPY --link docker/Caddyfile /etc/caddy/Caddyfile
 COPY --chown=moodle:www-data --chmod=0755 docker/sis-entrypoint docker/sis-cron docker/sis-settings.php docker/sis-db.php dbtools/sis-host-check /sis/bin/
 COPY --chown=moodle:www-data docker/sis-settings-lib.php /sis/bin/
 COPY --chown=moodle:www-data docker/up.php /sis/www/up.php

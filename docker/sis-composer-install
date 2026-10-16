@@ -6,14 +6,18 @@
 # Moodle loads some of tests/ outside a test run, so these stay: tests/classes
 # (autoloaded), tests/fixtures (the Ghostscript and document converter checks),
 # tests/generator and tests/behat (the admin test-course and scenario generators).
-# Runs as root; Composer itself runs as the moodle user, who owns /app.
+# Runs as root; Composer itself runs as the moodle user, who owns /app. Its download
+# cache is /var/cache/composer, which the Dockerfiles mount as a build cache so it stays
+# out of the image and survives between builds.
 set -eu
+export COMPOSER_CACHE_DIR=/var/cache/composer
+mkdir -p "$COMPOSER_CACHE_DIR"
+chown moodle "$COMPOSER_CACHE_DIR"
 
 apt-get update
 apt-get install -y --no-install-recommends git unzip
 
 HOME=/home/moodle runuser -u moodle -- composer install --no-dev --no-interaction --prefer-dist -d /app
-HOME=/home/moodle runuser -u moodle -- composer clear-cache
 
 find /app -type d -name tests -not -path '*/classes/*' -prune -print |
   while IFS= read -r dir; do

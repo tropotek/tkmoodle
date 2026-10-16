@@ -10,8 +10,10 @@ FROM ${BASE_IMAGE}
 ARG SIS_INSTITUTION
 ENV SIS_INSTITUTION=${SIS_INSTITUTION}
 COPY --chown=moodle:www-data composer.json composer.lock /app/
-COPY --chown=moodle:www-data settings.json /sis/institution/settings.json
 USER root
-RUN test -n "$SIS_INSTITUTION" || { echo "SIS_INSTITUTION build arg is required" >&2; exit 1; }; \
+RUN --mount=type=cache,id=composer,target=/var/cache/composer \
+    test -n "$SIS_INSTITUTION" || { echo "SIS_INSTITUTION build arg is required" >&2; exit 1; }; \
     sis-composer-install
 USER moodle
+# After composer install, so editing settings reuses the plugin layer.
+COPY --chown=moodle:www-data settings.json /sis/institution/settings.json
