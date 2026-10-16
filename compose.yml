@@ -4,7 +4,7 @@
 name: moodle-dev
 
 x-env: &env
-  WWWROOT: http://localhost:${DEV_PORT:-8300}
+  WWWROOT: ${WWWROOT:-http://localhost:${DEV_PORT:-8300}}
   SIS_ENV: local
   SMTP_HOSTS: ${SMTP_HOSTS:-mailpit:1025}
   # Moodle's default no-reply address, noreply@localhost here, is not a valid address.
