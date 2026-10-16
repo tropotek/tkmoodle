@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: shellcheck
-        run: shellcheck -x docker/sis-entrypoint docker/sis-cron bin/* dbtools/sis-* tests/*.sh tests/smoke/*.sh
+        run: shellcheck -x docker/sis-entrypoint docker/sis-cron docker/sis-composer-install bin/* dbtools/sis-* tests/*.sh tests/smoke/*.sh
 
       - name: dbtools tests
         run: bash tests/dbtools_test.sh
